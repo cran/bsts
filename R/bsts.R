@@ -15,7 +15,11 @@ bsts <- function(formula,
                  save.state.contributions = TRUE,
                  save.prediction.errors = TRUE,
                  data,
+                 bma.method = c("SSVS", "ODA"),
                  prior = NULL,
+                 oda.options = list(
+                     fallback.probability = 0.0,
+                     eigenvalue.fudge.factor = 0.01),
                  contrasts = NULL,
                  na.action = na.pass,
                  niter,
@@ -26,17 +30,17 @@ bsts <- function(formula,
   ## structural time series model.  This function can be used either
   ## with or without contemporaneous predictor variables (in a time
   ## series regression).
-
+  ##
   ## If predictor variables are present, the regression coefficients
   ## are fixed (as opposed to time varying, though time varying
   ## coefficients might be added as part of a state variable).  The
   ## predictors and response in the formula are contemporaneous, so if
   ## you want lags and differences you need to put them in the
   ## predictor matrix yourself.
-
+  ##
   ## If no predictor variables are used, then the model is an ordinary
   ## state space time series model.
-
+  ##
   ## Args:
   ##   formula: A formula describing the regression portion of the
   ##     relationship between y and X. If no regressors are desired
@@ -66,6 +70,14 @@ bsts <- function(formula,
   ##     variables in the model.  If not found in ‘data’, the
   ##     variables are taken from ‘environment(formula)’, typically
   ##     the environment from which ‘bsts’ is called.
+  ##   bma.method: If the model contains a regression component, this
+  ##     argument specifies the method to use for Bayesian model
+  ##     averaging.  "SSVS" is stochastic search variable selection,
+  ##     which is the classic approach from George and McCulloch
+  ##     (1997).  "ODA" is orthoganal data augmentation, from Ghosh
+  ##     and Clyde (2011).  It adds a set of latent observations that
+  ##     make the X^TX matrix diagonal, simplifying complete data MCMC
+  ##     for model selection.
   ##   prior: If a regression component is present then this a prior
   ##     distribution for the regression component of the model, as
   ##     created by SpikeSlabPrior.  The prior for the time series
@@ -75,6 +87,19 @@ bsts <- function(formula,
   ##     deviation, created by SdPrior.  In either case the prior is
   ##     optional.  A weak default prior will be used if no prior is
   ##     specified explicitly.
+  ##   oda.options: A list (which is ignored unless bma.method ==
+  ##     "ODA") with the following elements:
+  ##     * fallback.probability: Each MCMC iteration will use SSVS
+  ##         instead of ODA with this probability.  In cases where the
+  ##         latent data have high leverage, ODA mixing can suffer.
+  ##         Mixing in a few SSVS steps can help keep an errant
+  ##         algorithm on track.
+  ##     * eigenvalue.fudge.factor: The latent X's will be chosen so
+  ##         that the complete data X'X matrix (after scaling) is a
+  ##         constant diagonal matrix equal to the largest eigenvalue
+  ##         of the observed (scaled) X'X times (1 +
+  ##         eigenvalue.fudge.factor).  This should be a small
+  ##         positive number.
   ##   contrasts: an optional list. See the ‘contrasts.arg’ of
   ##     ‘model.matrix.default’.  This argument is only used if a
   ##     model formula is specified.  It can usually be ignored even
@@ -126,6 +151,7 @@ bsts <- function(formula,
     seed <- as.integer(seed)
   }
   if (regression) {
+    bma.method <- match.arg(bma.method)
     stopifnot(is.numeric(niter))
     function.call <- match.call()
     my.model.frame <- match.call(expand.dots = FALSE)
@@ -154,16 +180,40 @@ bsts <- function(formula,
       stop("bsts does not allow NA's in the predictors, only the responses.")
     }
     if (is.null(prior)) {
+      ## By default, don't accept any draws of the residual standard
+      ## deviation that are greater than 20% larger than the empirical
+      ## SD.
+      sigma.upper.limit <- sd(y, na.rm = TRUE) * 1.2
       zero <- rep(0, ncol(x))
-      prior <- SpikeSlabPrior(x,
-                              y,
-                              optional.coefficient.estimate = zero,
-                              ...)
+      if (bma.method == "SSVS") {
+        ## If using SSVS then the default prior is Zellner's g-prior.
+        prior <- SpikeSlabPrior(x,
+                                y,
+                                optional.coefficient.estimate = zero,
+                                sigma.upper.limit = sigma.upper.limit,
+                                ...)
+      } else if (bma.method == "ODA") {
+        ## If using ODA then you need an independent prior for
+        ## sigma^2, and independent conditional priors for each
+        ## element of beta.
+        prior <- IndependentSpikeSlabPrior(
+            x,
+            y,
+            optional.coefficient.estimate = zero,
+            sigma.upper.limit = sigma.upper.limit,
+            ...)
+      }
+    }
+    stopifnot(inherits(prior, "SpikeSlabPriorBase"))
+    if (bma.method == "ODA") {
+      stopifnot(inherits(prior, "IndependentSpikeSlabPrior"))
+      stopifnot(is.list(oda.options))
+      check.scalar.probability(oda.options$fallback.probability)
+      check.positive.scalar(oda.options$eigenvalue.fudge.factor)
     }
     if (is.null(prior$max.flips)) {
       prior$max.flips <- -1
     }
-    stopifnot(inherits(prior, "SpikeSlabPrior"))
 
     ## Identify any columns that are all zero, and assign them zero
     ## prior probability of being included in the model.
@@ -179,6 +229,8 @@ bsts <- function(formula,
                  as.logical(save.state.contributions),
                  as.logical(save.prediction.errors),
                  prior,
+                 bma.method,
+                 oda.options,
                  niter,
                  ping,
                  seed,
@@ -206,7 +258,13 @@ bsts <- function(formula,
     stopifnot(is.numeric(y))
 
     if (missing(prior)) {
-      prior <- SdPrior(sigma.guess = sd(y, na.rm = TRUE), sample.size = .01)
+      sdy <- sd(y, na.rm = TRUE)
+      ## By default, don't accept any draws of the residual standard
+      ## deviation that are greater than 20% larger than the empirical
+      ## SD.
+      prior <- SdPrior(sigma.guess = sdy,
+                       sample.size = .01,
+                       upper.limit = sdy * 1.2)
     }
     stopifnot(inherits(prior, "SdPrior"))
     ans <- .Call("bsts_fit_state_space_model_",
@@ -463,7 +521,7 @@ PlotBstsPredictors <- function(bsts.object,
     number.of.predictors <- ncol(predictors)
     original <- scale(bsts.object$original.series)
     if (is.null(ylim)) {
-      ylim <- range(predictors, original)
+      ylim <- range(predictors, original, na.rm = TRUE)
     }
     index <- rev(order(inclusion.probabilities))
     predictors <- predictors[, index]

@@ -28,7 +28,11 @@ bsts(formula,
      save.state.contributions = TRUE,
      save.prediction.errors = TRUE,
      data,
+     bma.method = c("SSVS", "ODA"),
      prior,
+     oda.options = list(
+         fallback.probability = 0.0,
+         eigenvalue.fudge.factor = 0.01),
      contrasts = NULL,
      na.action = na.pass,
      niter,
@@ -75,6 +79,32 @@ bsts(formula,
     variables in the model.  If not found in \code{data}, the variables
     are taken from \code{environment(formula)}, typically the
     environment from which \code{\link{bsts}} is called.}
+
+  \item{bma.method}{If the model contains a regression component, this
+    argument specifies the method to use for Bayesian model averaging.
+    "SSVS" is stochastic search variable selection, which is the classic
+    approach from George and McCulloch (1997).  "ODA" is orthoganal data
+    augmentation, from Ghosh and Clyde (2011).  It adds a set of latent
+    observations that make the X^TX matrix diagonal, vastly simplifying
+    complete data MCMC for model selection.}
+
+  \item{oda.options}{If bma.method == "ODA" then these are some options
+    for fine tuning the ODA algorithm.
+    \itemize{
+
+      \item \code{fallback.probability}: Each MCMC iteration will use
+      SSVS instead of ODA with this probability.  In cases where
+      the latent data have high leverage, ODA mixing can suffer.
+      Mixing in a few SSVS steps can help keep an errant algorithm
+      on track.
+
+      \item \code{eigenvalue.fudge.factor}: The latent X's will be
+      chosen so that the complete data X'X matrix (after scaling) is a
+      constant diagonal matrix equal to the largest eigenvalue of the
+      observed (scaled) X'X times (1 + eigenvalue.fudge.factor).  This
+      should be a small positive number.
+    }
+  }
 
   \item{prior}{If regressors are supplied in the model formula, then
     this is a prior distribution for the regression component of the
@@ -146,6 +176,15 @@ bsts(formula,
 
   Durbin and Koopman (2001), "Time series analysis by state space
   methods", Oxford University Press.
+
+  Goerge and McCulloch (1997)
+  "Approaches for Bayesian variable selection", Statistica Sinica pp
+  339--374.
+
+  Ghosh and Clyde (2011)
+  "Rao-Blackwellization for Bayesian variable selection and model averaging in linear and binary regression: a novel data augmentation approach",
+  JASA pp 1041 --1052.
+
 }
 
 \author{

@@ -132,7 +132,8 @@ plot(y - x * beta, main = "Local Level Effect")
 ss <- list()
 ss <- AddLocalLevel(ss, y)
 ss <- AddDynamicRegression(ss, y ~ x)
-model <- bsts(y, state.specification = ss, niter = 500)
+## In a real appliction you'd probably want more than 100 iterations.
+model <- bsts(y, state.specification = ss, niter = 100)
 plot(model, "dynamic")
 }
 

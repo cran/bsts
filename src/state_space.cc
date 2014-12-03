@@ -60,8 +60,7 @@ namespace bsts {
 RListIoManager SpecifyStateSpaceModel(
     Ptr<StateSpaceModel>,
     SEXP state_specification,
-    double prior_df,
-    double prior_sigma_guess,
+    SEXP r_sigma_prior,
     Vec *final_state,
     bool save_state_history,
     bool save_prediction_errors);
@@ -92,10 +91,10 @@ class StateContributionCallback : public BOOM::MatrixIoCallback {
 //   model:  The StateSpaceModel to be specified
 //   state_specification: An R list specifying the components of state
 //     to be added.  See the comments in create_state_model.cc.
-//   prior_df: The prior sample size associated with the guess at
-//     the standard deviation of the observation model.
-//   prior_sigma_guess: A guess at the value of the standard
-//     deviation of the observation model.
+//   rsigma_prior: This can be NULL if the model is being created for
+//     purposes other than posterior sampling.  Otherwise it must be
+//     an R object of class SdPrior giving the prior distribution for
+//     the residual standard deviation.
 //   final_state: A pointer to a BOOM::Vec that will be used to hold
 //     the sampled values of the final state when reading through an
 //     MCMC stream.  If the model is being used for output only then
@@ -110,8 +109,7 @@ class StateContributionCallback : public BOOM::MatrixIoCallback {
 //   stream of MCMC samples.
 RListIoManager SpecifyStateSpaceModel(Ptr<StateSpaceModel> model,
                                       SEXP state_specification,
-                                      double prior_df,
-                                      double prior_sigma_guess,
+                                      SEXP rsigma_prior,
                                       BOOM::Vec *final_state,
                                       bool save_state_history,
                                       bool save_prediction_errors) {
@@ -124,12 +122,17 @@ RListIoManager SpecifyStateSpaceModel(Ptr<StateSpaceModel> model,
   factory.AddState(state_specification);
 
   ZeroMeanGaussianModel *obs = model->observation_model();
-  obs->set_method(new ZeroMeanGaussianConjSampler(
-      obs,
-      prior_df,
-      prior_sigma_guess));
-
-  model->set_method(new StateSpacePosteriorSampler(model.get()));
+  if (!Rf_isNull(rsigma_prior)) {
+    BOOM::RInterface::SdPrior sigma_prior(rsigma_prior);
+    BOOM::Ptr<ZeroMeanGaussianConjSampler> sigma_sampler(
+        new ZeroMeanGaussianConjSampler(
+            obs,
+            sigma_prior.prior_df(),
+            sigma_prior.prior_guess()));
+    sigma_sampler->set_sigma_upper_limit(sigma_prior.upper_limit());
+    obs->set_method(sigma_sampler);
+    model->set_method(new StateSpacePosteriorSampler(model.get()));
+  }
 
   factory.SaveFinalState(final_state);
 
@@ -211,16 +214,11 @@ extern "C" {
       BOOM::Ptr<BOOM::StateSpaceModel> model(
           new BOOM::StateSpaceModel(y, y_is_observed));
 
-      BOOM::RInterface::SdPrior sigma_prior(rsigma_prior);
-      double prior_df = sigma_prior.prior_df();
-      double prior_sigma_guess = sigma_prior.prior_guess();
-
       Vec final_state;
       RListIoManager io_manager = SpecifyStateSpaceModel(
           model,
           rstate_specification,
-          prior_df,
-          prior_sigma_guess,
+          rsigma_prior,
           &final_state,
           Rf_asLogical(rsave_state_contribution_flag),
           Rf_asLogical(rsave_prediction_errors_flag));
@@ -299,8 +297,7 @@ extern "C" {
       RListIoManager io_manager = SpecifyStateSpaceModel(
           model,
           state_specification,
-          1,  // dummy
-          1,  // dummy
+          R_NilValue,
           &final_state,
           false,
           false);
@@ -380,8 +377,7 @@ extern "C" {
     RListIoManager io_manager = SpecifyStateSpaceModel(
         model,
         state_specification,
-        1,  // dummy
-        1,  // dummy
+        R_NilValue,
         &final_state,
         false,
         false);

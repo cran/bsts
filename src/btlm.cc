@@ -10,12 +10,14 @@
 #include "r_interface/create_state_model.hpp"
 #include "r_interface/handle_exception.hpp"
 #include "r_interface/list_io.hpp"
+#include "r_interface/prior_specification.hpp"
 #include "r_interface/print_R_timestamp.hpp"
 #include "r_interface/seed_rng_from_R.hpp"
 
 #include "cpputil/report_error.hpp"
 
 #include "Models/Glm/PosteriorSamplers/BregVsSampler.hpp"
+#include "Models/Glm/PosteriorSamplers/SpikeSlabDaRegressionSampler.hpp"
 #include "Models/StateSpace/PosteriorSamplers/StateSpacePosteriorSampler.hpp"
 #include "Models/StateSpace/PosteriorSamplers/StateSpaceRegressionSampler.hpp"
 #include "Models/StateSpace/StateModels/DynamicRegressionStateModel.hpp"
@@ -26,11 +28,12 @@
 #include "R_ext/Arith.h"  // for ISNA
 
 using BOOM::BregVsSampler;
-using BOOM::Mat;
+using BOOM::SpikeSlabDaRegressionSampler;
+using BOOM::Matrix;
 using BOOM::Ptr;
-using BOOM::Spd;
+using BOOM::SpdMatrix;
 using BOOM::SubMatrix;
-using BOOM::Vec;
+using BOOM::Vector;
 
 using BOOM::RegressionData;
 using BOOM::RegressionModel;
@@ -60,14 +63,21 @@ using BOOM::RInterface::handle_exception;
 using BOOM::RInterface::handle_unknown_exception;
 
 namespace bsts {
-void AddRegressionPriorAndSetSampler(Ptr<StateSpaceRegressionModel>, SEXP);
+void AddRegressionPriorAndSetSampler(
+    Ptr<StateSpaceRegressionModel> model,
+    SEXP r_regression_prior,
+    SEXP r_bma_method,
+    SEXP r_oda_options);
+
 void AddRegressionData(Ptr<StateSpaceRegressionModel>, SEXP bsts_object);
 
 RListIoManager SpecifyStateSpaceRegressionModel(
-    Ptr<StateSpaceRegressionModel>,
-    SEXP state_specification,
-    SEXP regression_prior,
-    Vec *final_state,
+    Ptr<StateSpaceRegressionModel> model,
+    SEXP r_state_specification,
+    SEXP r_regression_prior,
+    SEXP r_bma_method,
+    SEXP r_oda_options,
+    Vector *final_state,
     bool save_state_history,
     bool save_prediction_errors);
 
@@ -83,10 +93,10 @@ class RegressionStateContributionCallback : public BOOM::MatrixIoCallback {
   // row for the regression effects.  The fact that the regression is
   // implemented differently than the other elements of state is an
   // unfortunate implementation detail.
-  virtual int nrow()const {return 1 + model_->nstate();}
-  virtual int ncol()const {return model_->time_dimension();}
-  virtual BOOM::Mat get_matrix()const {
-    BOOM::Mat ans(nrow(), ncol());
+  int nrow() const override {return 1 + model_->nstate();}
+  int ncol() const override {return model_->time_dimension();}
+  BOOM::Matrix get_matrix() const override {
+    BOOM::Matrix ans(nrow(), ncol());
     for (int state = 0; state < model_->nstate(); ++state) {
       ans.row(state) = model_->state_contribution(state);
     }
@@ -107,7 +117,10 @@ class RegressionStateContributionCallback : public BOOM::MatrixIoCallback {
 //     to be added.  See the comments in create_state_model.cc.
 //   regression_prior: An R list.  See comments in
 //     AddRegressionPriorAndSetSampler, below.
-//   final_state: A pointer to a BOOM::Vec that can be used to read in
+//   bma_method: An R string specifying whether "SSVS" or "ODA" should
+//     be used for Bayesian model averaging.  Can be an R NULL value
+//     if no MCMC is needed.
+//   final_state: A pointer to a BOOM::Vector that can be used to read in
 //     the value of the state for the final time point.  This is only
 //     needed if the model is going to be reading previously sampled
 //     MCMC output, otherwise it can be NULL.
@@ -119,9 +132,11 @@ class RegressionStateContributionCallback : public BOOM::MatrixIoCallback {
 //     record, and stream the model parameters and related information.
 RListIoManager SpecifyStateSpaceRegressionModel(
     Ptr<StateSpaceRegressionModel> model,
-    SEXP state_specification,
-    SEXP regression_prior,
-    Vec *final_state,
+    SEXP r_state_specification,
+    SEXP r_regression_prior,
+    SEXP r_bma_method,
+    SEXP r_oda_options,
+    Vector *final_state,
     bool save_state_history,
     bool save_prediction_errors) {
   RListIoManager io_manager;
@@ -134,8 +149,11 @@ RListIoManager SpecifyStateSpaceRegressionModel(
                                        "sigma.obs"));
 
   BOOM::RInterface::StateModelFactory factory(&io_manager, model.get());
-  factory.AddState(state_specification);
-  AddRegressionPriorAndSetSampler(model, regression_prior);
+  factory.AddState(r_state_specification);
+  AddRegressionPriorAndSetSampler(model,
+                                  r_regression_prior,
+                                  r_bma_method,
+                                  r_oda_options);
   model->set_method(new StateSpacePosteriorSampler(model.get()));
 
   factory.SaveFinalState(final_state);
@@ -166,6 +184,18 @@ RListIoManager SpecifyStateSpaceRegressionModel(
   return io_manager;
 }
 
+// Initialize the model to be empty, except for variables that are
+// known to be present with probability 1.
+void DropAllCoefficients(Ptr<RegressionModel> regression,
+                         const BOOM::Vector &prior_inclusion_probs) {
+  regression->coef().drop_all();
+  for (int i = 0; i < prior_inclusion_probs.size(); ++i) {
+    if (prior_inclusion_probs[i] >= 1.0) {
+      regression->coef().add(i);
+    }
+  }
+}
+
 //======================================================================
 // Adds a regression prior to the RegressionModel managed by model.
 // Args:
@@ -173,38 +203,62 @@ RListIoManager SpecifyStateSpaceRegressionModel(
 //     prior assigned to it.
 //   regression_prior: An R object created by SpikeSlabPrior,
 //     which is part of the BoomSpikeSlab package.
+//   bma_method: An R string specifying whether "SSVS" or "ODA" should
+//     be used for Bayesian model averaging.  Can also be R_NilValue
+//     if the model is not being specified for MCMC.
 void AddRegressionPriorAndSetSampler(Ptr<StateSpaceRegressionModel> model,
-                                     SEXP regression_prior) {
-  Vec prior_inclusion_probs(ToBoomVector(getListElement(
-      regression_prior, "prior.inclusion.probabilities")));
-  Vec mu(ToBoomVector(getListElement(
-      regression_prior, "mu")));
-  Spd Siginv(ToBoomSpd(getListElement(
-      regression_prior, "siginv")));
-  double prior_df = Rf_asReal(getListElement(regression_prior, "prior.df"));
-  double prior_sigma_guess = Rf_asReal(getListElement(
-      regression_prior, "sigma.guess"));
-  int max_flips = Rf_asInteger(getListElement(regression_prior, "max.flips"));
-
-  Ptr<RegressionModel> regression(model->regression_model());
-  // Initialize the model to be empty, except for variables that are
-  // known to be present with probability 1.
-  regression->coef().drop_all();
-  for (int i = 0; i < prior_inclusion_probs.size(); ++i) {
-    if (prior_inclusion_probs[i] >= 1.0) {
-      regression->coef().add(i);
-    }
+                                     SEXP r_regression_prior,
+                                     SEXP r_bma_method,
+                                     SEXP r_oda_options) {
+  // If either the prior object or the bma method is NULL then take
+  // that as a signal the model is not being specified for the
+  // purposes of MCMC, and bail out.
+  if (Rf_isNull(r_bma_method) || Rf_isNull(r_regression_prior)) {
+    return;
   }
-
-  Ptr<BregVsSampler> sampler(new BregVsSampler(
-      regression.get(),
-      mu,
-      Siginv,
-      prior_sigma_guess,
-      prior_df,
-      prior_inclusion_probs));
-  sampler->limit_model_selection(max_flips);
-  regression->set_method(sampler);
+  std::string bma_method = BOOM::ToString(r_bma_method);
+  Ptr<RegressionModel> regression(model->regression_model());
+  if (bma_method == "SSVS") {
+    BOOM::RInterface::RegressionConjugateSpikeSlabPrior prior(
+        r_regression_prior, model->regression_model()->Sigsq_prm());
+    DropAllCoefficients(regression, prior.prior_inclusion_probabilities());
+    Ptr<BregVsSampler> sampler(new BregVsSampler(
+        model->regression_model().get(),
+        prior.slab(),
+        prior.siginv_prior(),
+        prior.spike()));
+    sampler->set_sigma_upper_limit(prior.sigma_upper_limit());
+    int max_flips = prior.max_flips();
+    if (max_flips > 0) {
+      sampler->limit_model_selection(max_flips);
+    }
+    regression->set_method(sampler);
+  } else if (bma_method == "ODA") {
+    BOOM::RInterface::IndependentRegressionSpikeSlabPrior prior(
+        r_regression_prior, model->regression_model()->Sigsq_prm());
+    double eigenvalue_fudge_factor = 0.001;
+    double fallback_probability = 0.0;
+    if (!Rf_isNull(r_oda_options)) {
+      eigenvalue_fudge_factor = Rf_asReal(
+          getListElement(r_oda_options, "eigenvalue.fudge.factor"));
+      fallback_probability = Rf_asReal(
+          getListElement(r_oda_options, "fallback.probability"));
+    }
+    Ptr<SpikeSlabDaRegressionSampler> sampler(
+        new SpikeSlabDaRegressionSampler(
+            regression.get(),
+            prior.slab(),
+            prior.siginv_prior(),
+            prior.prior_inclusion_probabilities(),
+            eigenvalue_fudge_factor,
+            fallback_probability));
+    sampler->set_sigma_upper_limit(prior.sigma_upper_limit());
+    regression->set_method(sampler);
+  } else {
+    std::ostringstream err;
+    err << "Unrecognized value of bma_method: " << bma_method;
+    BOOM::report_error(err.str());
+  }
 }
 
 //----------------------------------------------------------------------
@@ -217,8 +271,8 @@ void AddRegressionData(Ptr<StateSpaceRegressionModel> model,
                        SEXP object) {
   // Need to add dummy values for old data so the model can get
   // the 'time' subscript right for the prediction.
-  Mat X(ToBoomMatrix(getListElement(object, "design.matrix")));
-  Vec y(ToBoomVector(getListElement(object, "original.series")));
+  Matrix X(ToBoomMatrix(getListElement(object, "design.matrix")));
+  Vector y(ToBoomVector(getListElement(object, "original.series")));
   for (int i = 0; i < y.size(); ++i) {
     model->add_data(Ptr<RegressionData>(new RegressionData(y[i], X.row(i))));
   }
@@ -228,54 +282,71 @@ extern "C" {
   //======================================================================
   // Primary C++ interface to the R bsts function when using a formula.
   // Args:
-  //   rx: An R matrix created using model.matrix.  This is the design
+  //   r_x: An R matrix created using model.matrix.  This is the design
   //     matrix for the regression.
-  //   ry: An R vector of responses created using model.response from
+  //   r_y: An R vector of responses created using model.response from
   //     the R function bsts().
-  //   ry_is_observed: An R logical vector indicating which elements
+  //   r_y_is_observed: An R logical vector indicating which elements
   //     of y are non-NA.  NA elements of y correspond to missing
   //     observations that should be smoothed over by the Kalman
   //     filter.
-  //   state_specification: An R list of state model specifications.  See
+  //   r_state_specification: An R list of state model specifications.  See
   //     the R documentation and the comments in create_state_model.cc
-  //   save_state_contribution_flag: An R logical indicating whether
+  //   r_save_state_contribution_flag: An R logical indicating whether
   //     contributions from the individual state model components
   //     should be saved.  Saving them requires storage of order
   //     (number of time points) * (number of state models) * (number
   //     of mcmc iterations)
-  //   regression_prior: An R object specifying the prior for the
+  //   r_regression_prior: An R object specifying the prior for the
   //     regression coefficients and observation variance.  This is
   //     assumed to have been created by SpikeSlabPrior, part of
   //     the BoomSpikeSlab package.
-  //   rniter:  An R scalar giving the desired number of MCMC iterations.
-  //   rping: An R integer indicating the frequency with which
+  //   r_bma_method: A string indicating which strategy to use for
+  //     Bayesian model averaging.  The choices are "SSVS" and "ODA".
+  //   r_oda_options: A list (which is ignored unless rbma_method ==
+  //     "ODA") with the following elements:
+  //     * fallback.probability: Each MCMC iteration will use SSVS
+  //       instead of ODA with this probability.  In cases where the
+  //       latent data have high leverage, ODA mixing can suffer.
+  //       Mixing in a few SSVS steps can help keep an errant
+  //       algorithm on track.
+  //    * eigenvalue.fudge.factor: The latent X's will be chosen so
+  //      that the complete data X'X matrix (after scaling) is a
+  //      constant diagonal matrix equal to the largest eigenvalue of
+  //      the observed (scaled) X'X times (1 +
+  //      eigenvalue.fudge.factor).  This should be a small positive
+  //      number.
+  //   r_niter:  An R scalar giving the desired number of MCMC iterations.
+  //   r_ping: An R integer indicating the frequency with which
   //     progress reports get printed.  E.g. setting rping = 100 will
   //     print a status message with a time and iteration stamp every
   //     100 iterations.  If you don't want these messages set rping < 0.
-  //   rseed: An integer to use as the C++ random seed, or NULL.  If
+  //   r_seed: An integer to use as the C++ random seed, or NULL.  If
   //     NULL then the C++ seed will be set using the clock.
   // Returns:
   //   An R object containing the posterior draws defining the model.
   SEXP bsts_fit_state_space_regression_(
-      SEXP rx,
-      SEXP ry,
-      SEXP ry_is_observed,
-      SEXP rstate_specification,
-      SEXP rsave_state_contribution_flag,
-      SEXP rsave_prediction_errors_flag,
-      SEXP rregression_prior,
-      SEXP rniter,
-      SEXP rping,
-      SEXP rseed) {
+      SEXP r_x,
+      SEXP r_y,
+      SEXP r_y_is_observed,
+      SEXP r_state_specification,
+      SEXP r_save_state_contribution_flag,
+      SEXP r_save_prediction_errors_flag,
+      SEXP r_regression_prior,
+      SEXP r_bma_method,
+      SEXP r_oda_options,
+      SEXP r_niter,
+      SEXP r_ping,
+      SEXP r_seed) {
     RErrorReporter error_reporter;
     try {
       // The try block is needed to catch any errors that come from
       // boom_r_tools.  E.g. ToBoomVector...
-      BOOM::RInterface::seed_rng_from_R(rseed);
-      BOOM::Mat X = ToBoomMatrix(rx);
-      BOOM::Vec y = ToBoomVector(ry);
+      BOOM::RInterface::seed_rng_from_R(r_seed);
+      BOOM::Matrix X = ToBoomMatrix(r_x);
+      BOOM::Vector y = ToBoomVector(r_y);
 
-      std::vector<bool> y_is_observed = ToVectorBool(ry_is_observed);
+      std::vector<bool> y_is_observed = ToVectorBool(r_y_is_observed);
 
       if (nrow(X) != y.size()) {
         error_reporter.SetError("error in bsts::fit_state_space_regression_:  "
@@ -290,11 +361,13 @@ extern "C" {
       RListIoManager io_manager =
           SpecifyStateSpaceRegressionModel(
               model,
-              rstate_specification,
-              rregression_prior,
+              r_state_specification,
+              r_regression_prior,
+              r_bma_method,
+              r_oda_options,
               NULL,
-              Rf_asLogical(rsave_state_contribution_flag),
-              Rf_asLogical(rsave_prediction_errors_flag));
+              Rf_asLogical(r_save_state_contribution_flag),
+              Rf_asLogical(r_save_prediction_errors_flag));
 
       // Do one posterior sampling step before getting ready to write.
       // This will ensure that any dynamically allocated objects have
@@ -302,8 +375,8 @@ extern "C" {
       // call to prepare_to_write().
       model->sample_posterior();
 
-      int niter = lround(Rf_asReal(rniter));
-      int ping = lround(Rf_asReal(rping));
+      int niter = lround(Rf_asReal(r_niter));
+      int ping = lround(Rf_asReal(r_ping));
       SEXP ans = PROTECT(io_manager.prepare_to_write(niter));
       for (int i = 0; i < niter; ++i) {
         if (RCheckInterrupt()) {
@@ -364,17 +437,19 @@ extern "C" {
       SEXP roldy) {
     SEXP forecast;
     try {
-      BOOM::Mat newX(ToBoomMatrix(rnewX));
+      BOOM::Matrix newX(ToBoomMatrix(rnewX));
       int xdim = ncol(newX);
       Ptr<StateSpaceRegressionModel> model(
           new StateSpaceRegressionModel(xdim));
 
-      Vec final_state;
+      Vector final_state;
       RListIoManager io_manager =
           SpecifyStateSpaceRegressionModel(
               model,
               getListElement(object, "state.specification"),
               getListElement(object, "regression.prior"),
+              R_NilValue,  // bma method
+              R_NilValue,  // oda options
               &final_state,
               false,       // Don't save state contributions.
               false);      // Don't save prediction errors.
@@ -382,8 +457,8 @@ extern "C" {
       bool have_old_data(false);
       if (!ISNA(Rf_asReal(roldX)) && !ISNA(Rf_asReal(roldy))) {
         have_old_data = true;
-        BOOM::Mat oldX(ToBoomMatrix(roldX));
-        BOOM::Vec oldy(ToBoomVector(roldy));
+        BOOM::Matrix oldX(ToBoomMatrix(roldX));
+        BOOM::Vector oldy(ToBoomVector(roldy));
         model->clear_data();
         for (int i = 0; i < oldy.size(); ++i) {
           NEW(RegressionData, dp)(oldy[i], oldX.row(i));
@@ -447,7 +522,7 @@ extern "C" {
       SEXP rburn) {
     RErrorReporter error_reporter;
     try {
-      BOOM::Mat newX(ToBoomMatrix(rnewX));
+      BOOM::Matrix newX(ToBoomMatrix(rnewX));
       int xdim = ncol(newX);
       Ptr<StateSpaceRegressionModel> model(
           new StateSpaceRegressionModel(xdim));
@@ -456,7 +531,7 @@ extern "C" {
       // correctly in the Kalman filter.
       AddRegressionData(model, object);
 
-      Vec newY(ToBoomVector(rnewY));
+      Vector newY(ToBoomVector(rnewY));
       if (newX.nrow() != newY.size()) {
         error_reporter.SetError("error in bsts_one_step_prediction_errors_: "
                                 "number of rows in X does not match length of "
@@ -464,12 +539,14 @@ extern "C" {
         return R_NilValue;
       }
 
-      Vec final_state(model->state_dimension());
+      Vector final_state(model->state_dimension());
       RListIoManager io_manager =
           SpecifyStateSpaceRegressionModel(
               model,
               getListElement(object, "state.specification"),
               getListElement(object, "regression.prior"),
+              R_NilValue,   // bma method
+              R_NilValue,   // epsilon
               &final_state,
               false,   // Don't save state contributions.
               false);  // Don't save prediction errors.
@@ -516,7 +593,7 @@ extern "C" {
   //   columns corresponding to forecast time.
   SEXP bsts_one_step_training_prediction_errors_(SEXP object, SEXP rburn) {
     try {
-      BOOM::Mat X(ToBoomMatrix(getListElement(object, "design.matrix")));
+      BOOM::Matrix X(ToBoomMatrix(getListElement(object, "design.matrix")));
       int xdim = ncol(X);
       int time_dimension(nrow(X));
       Ptr<StateSpaceRegressionModel> model(new StateSpaceRegressionModel(xdim));
@@ -525,12 +602,14 @@ extern "C" {
       // correctly in the Kalman filter.
       AddRegressionData(model, object);
 
-      Vec final_state;
+      Vector final_state;
       RListIoManager io_manager =
           SpecifyStateSpaceRegressionModel(
               model,
               getListElement(object, "state.specification"),
               getListElement(object, "regression.prior"),
+              R_NilValue,  // bma method
+              R_NilValue,  // epsilon
               &final_state,
               false,   // Don't save state contributions.
               false);  // Don't save prediction errors.

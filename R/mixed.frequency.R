@@ -117,10 +117,15 @@ bsts.mixed <- function(target.series,
     fine.frequency <- nrow(predictors) / length(target.series)
     mean.fine.series <- mean(target.series) / fine.frequency
     sd.fine.series <- sd(target.series) / sqrt(fine.frequency)
-    regression.prior <- SpikeSlabPrior(x = predictors,
-                                       mean.y = mean.fine.series,
-                                       sdy = sd.fine.series,
-                                       ...)
+    ## By default, don't accept any draws of the residual standard
+    ## deviation that are greater than 20% larger than the empirical
+    ## SD.
+    regression.prior <- SpikeSlabPrior(
+        x = predictors,
+        mean.y = mean.fine.series,
+        sdy = sd.fine.series,
+        sigma.upper.limit = sd.fine.series * 1.2,
+        ...)
   }
   if (is.null(regression.prior$max.flips)) {
     regression.prior$max.flips <- -1

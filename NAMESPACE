@@ -5,9 +5,9 @@ S3method(predict, bsts)
 S3method(plot, bsts.prediction)
 S3method(plot, bsts.mixed)
 
-import(BoomSpikeSlab)
-import(Boom)
-import(xts)
-import(zoo)
+import(Boom,
+       BoomSpikeSlab,
+       xts,
+       zoo)
 
 useDynLib(bsts)

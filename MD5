@@ -1,6 +1,6 @@
-682c909c766fab07febdc8a15ad02a77 *DESCRIPTION
+685a1e634082209eab685fc578e1bc6d *DESCRIPTION
 7eb09e6fd83eb49ed22911c3b2f06744 *LICENSE
-aa677b5535dc2fe0a1d2b685dcf01410 *NAMESPACE
+77a1cc0e604e69b9fbe98f647d945258 *NAMESPACE
 3c5c0ab86b65f589f216f5b00493af8c *R/add.ar.R
 d936d73ea1ba0e04daf21bc5e7d695d4 *R/add.dynamic.regression.R
 3b7f4ce7712313564da8462c61f44441 *R/add.generalized.local.linear.trend.R
@@ -9,10 +9,10 @@ b61a306ab1b1c2b23b8d23f671e3ace5 *R/add.local.level.R
 719583cdf1c87280e0e1e477df8db264 *R/add.local.linear.trend.R
 0a2eeaaff2f3855d82467fb37b12a375 *R/add.seasonal.R
 c842b038fb627658489340061b1488bd *R/add.student.local.linear.trend.R
-9f650f01e14cd4abcf1727419ffea05d *R/bsts.R
+a0abaf681d37f0f1b6945f28f6440924 *R/bsts.R
 6fe47458a46d894d87a4909cc83556fd *R/compare.bsts.models.R
 ef4ff21a616f02181c39a4b57ff3b0eb *R/date.functions.R
-be4c0cf9bf0e3ca39afb6800d5cf692b *R/mixed.frequency.R
+23feec2c745055ed5e1b205e7cc3e9ae *R/mixed.frequency.R
 32da9abbffc9b703dbabc15eb2caf60f *R/plot.holidays.R
 7a2c0185c43360b8eb6b69d219567148 *R/plot_dynamic_distribution.R
 32e85a29e6cd0b3a9a97ddfa1317998c *R/plot_seasonal_effect.R
@@ -25,7 +25,7 @@ d754a8d5f216044d2bf2d01bac709648 *data/goog.RData
 c9d452bc5c6d2cd07f8ca53eef29ef27 *man/StateSpecification.Rd
 cf8fb42238f9eeb7a3cf3009dc91be1c *man/SuggestBurn.Rd
 c04f8723780d7b8eb6c37b8009e2df5a *man/add.ar.Rd
-c06e979e389d50cf28189189622278cd *man/add.dynamic.regression.Rd
+8fe7ec0ce23647a06504339560589e8e *man/add.dynamic.regression.Rd
 2fba4dca6940e1543aba83b02c73871d *man/add.generalized.local.linear.trend.Rd
 6ff892f872cd88fa1fd1b1fe9291b7bc *man/add.holiday.Rd
 acaa481c386be7a6430d0100c3c88a3c *man/add.local.level.Rd
@@ -34,7 +34,7 @@ d40c279a569e0bd76ad5a69a90b789e5 *man/add.local.linear.trend.Rd
 503192f7ded2595673283ec6c20234fb *man/add.student.local.linear.trend.Rd
 5c4701809c26b18b46cd3634dbcbb865 *man/aggregate.time.series.Rd
 c40a2962a15b91d769f478a32998c64e *man/aggregate.weeks.to.months.Rd
-f036e85e65fcdcfcbdba82dc05ae61c9 *man/bsts.Rd
+27b8d1eeb94ec2cf56a64caffd526c93 *man/bsts.Rd
 ab67adcab7178e46681f26a09b9a5a06 *man/bsts.holdout.prediction.errors.Rd
 46a05e3c51acb8caed9e1b44b8aa1083 *man/compare.bsts.models.Rd
 6e3955ef37a60e31846c18f6bbc5ae94 *man/estimate.time.scale.Rd
@@ -62,9 +62,9 @@ a774d866833924ea8d6ca77763500e68 *man/simulate.fake.mixed.frequency.data.Rd
 d57163e548d8d3d98c73c076206cd4e2 *man/summary.bsts.Rd
 ba703f81ad4be6d3ac29a85e9c8e397c *man/timeseries.boxplot.Rd
 57af8d3de323423befb55d02ed034ada *man/week.ends.Rd
-50912aab93d64ad7392fd35ee6f5bcd8 *src/Makevars
+5442c109b338e0fe1e159ab48a2bf06d *src/Makevars
 1eeee71e5c9b8d40de50d83b9660fa59 *src/aggregate_time_series.cc
-ad158d2c2c68471965f955bf64c35400 *src/btlm.cc
-1b420e06ec7bb718fd3f0aa4ef00f120 *src/mixed_frequency.cc
-df0a272b9b31b07e0bbb00dbfa15bf0d *src/state_space.cc
+b869b6b69d427bb121d7f7ff73c26a2c *src/btlm.cc
+e5610cf3eb282eda96082c201d9898cf *src/mixed_frequency.cc
+454d267829019300866ac3ef1c33478d *src/state_space.cc
 84f1ec8d86f3f7b3d56930b0b4731fe0 *src/utils.h

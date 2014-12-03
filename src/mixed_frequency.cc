@@ -9,6 +9,7 @@
 #include "r_interface/boom_r_tools.hpp"
 #include "r_interface/create_state_model.hpp"
 #include "r_interface/list_io.hpp"
+#include "r_interface/prior_specification.hpp"
 #include "r_interface/print_R_timestamp.hpp"
 #include "r_interface/seed_rng_from_R.hpp"
 #include "r_interface/handle_exception.hpp"
@@ -110,24 +111,18 @@ void AddRegressionPriorAndSetSampler(
     Ptr<AggregatedStateSpaceRegression> model,
     SEXP r_regression_prior,
     SEXP r_truth) {
-  Vec prior_inclusion_probs(ToBoomVector(getListElement(
-      r_regression_prior, "prior.inclusion.probabilities")));
-  Vec mu(ToBoomVector(getListElement(
-      r_regression_prior, "mu")));
-  Spd Siginv(ToBoomSpd(getListElement(
-      r_regression_prior, "siginv")));
-  double prior_df = Rf_asReal(getListElement(r_regression_prior, "prior.df"));
-  double prior_sigma_guess = Rf_asReal(getListElement(
-      r_regression_prior, "sigma.guess"));
-  int max_flips = Rf_asInteger(getListElement(r_regression_prior, "max.flips"));
+  BOOM::RInterface::RegressionConjugateSpikeSlabPrior prior(
+      r_regression_prior, model->regression_model()->Sigsq_prm());
   Ptr<BOOM::BregVsSampler> sampler(new BOOM::BregVsSampler(
       model->regression_model(),
-      mu,
-      Siginv,
-      prior_sigma_guess,
-      prior_df,
-      prior_inclusion_probs));
-  sampler->limit_model_selection(max_flips);
+      prior.slab(),
+      prior.siginv_prior(),
+      prior.spike()));
+  sampler->set_sigma_upper_limit(prior.sigma_upper_limit());
+  int max_flips = prior.max_flips();
+  if (max_flips > 0) {
+    sampler->limit_model_selection(max_flips);
+  }
   model->regression_model()->set_method(sampler);
 
   if (!Rf_isNull(r_truth)) {
