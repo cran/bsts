@@ -1,4 +1,4 @@
-685a1e634082209eab685fc578e1bc6d *DESCRIPTION
+7347e81053bb36cf4b795cdb77e97105 *DESCRIPTION
 7eb09e6fd83eb49ed22911c3b2f06744 *LICENSE
 77a1cc0e604e69b9fbe98f647d945258 *NAMESPACE
 3c5c0ab86b65f589f216f5b00493af8c *R/add.ar.R
@@ -64,7 +64,7 @@ ba703f81ad4be6d3ac29a85e9c8e397c *man/timeseries.boxplot.Rd
 57af8d3de323423befb55d02ed034ada *man/week.ends.Rd
 5442c109b338e0fe1e159ab48a2bf06d *src/Makevars
 1eeee71e5c9b8d40de50d83b9660fa59 *src/aggregate_time_series.cc
-b869b6b69d427bb121d7f7ff73c26a2c *src/btlm.cc
+991425c35941fec9aa0e5e4c563cb4fe *src/btlm.cc
 e5610cf3eb282eda96082c201d9898cf *src/mixed_frequency.cc
 454d267829019300866ac3ef1c33478d *src/state_space.cc
 84f1ec8d86f3f7b3d56930b0b4731fe0 *src/utils.h

@@ -93,9 +93,12 @@ class RegressionStateContributionCallback : public BOOM::MatrixIoCallback {
   // row for the regression effects.  The fact that the regression is
   // implemented differently than the other elements of state is an
   // unfortunate implementation detail.
-  int nrow() const override {return 1 + model_->nstate();}
-  int ncol() const override {return model_->time_dimension();}
-  BOOM::Matrix get_matrix() const override {
+  //
+  // TODO(stevescott): Change the leading 'virtual' to a trailing
+  // 'override' once CRAN supports C++11 on windows.
+  virtual int nrow() const {return 1 + model_->nstate();}
+  virtual int ncol() const {return model_->time_dimension();}
+  virtual BOOM::Matrix get_matrix() const {
     BOOM::Matrix ans(nrow(), ncol());
     for (int state = 0; state < model_->nstate(); ++state) {
       ans.row(state) = model_->state_contribution(state);
