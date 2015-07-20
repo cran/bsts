@@ -5,8 +5,8 @@ AddSeasonal <- function(state.specification,
                         y,
                         nseasons,
                         season.duration = 1,
-                        sigma.prior,
-                        initial.state.prior,
+                        sigma.prior = NULL,
+                        initial.state.prior = NULL,
                         sdy) {
   ## Add a seasonal state component to state.specification
   ## Args:
@@ -38,14 +38,14 @@ AddSeasonal <- function(state.specification,
     sdy <- sd(as.numeric(y), na.rm = TRUE)
   }
 
-  if (missing(sigma.prior)) {
+  if (is.null(sigma.prior)) {
     ## The prior distribution says that sigma is small, and can be no
     ## larger than the sample standard deviation of the time series
     ## being modeled.
     sigma.prior <- SdPrior(.01 * sdy, upper.limit = sdy)
   }
 
-  if (missing(initial.state.prior)) {
+  if (is.null(initial.state.prior)) {
     initial.state.prior <- NormalPrior(0, sdy)
   }
 

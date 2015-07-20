@@ -165,7 +165,7 @@ bsts.mixed <- function(target.series,
   for (i in seq_len(nstate)) state.names[i] <- state.specification[[i]]$name
   state.names <- c("regression", state.names)
   dimnames(ans$state.contributions) <-
-    list(mcmc.iteration = NULL, component = state.names, time = NULL)
+      list(mcmc.iteration = NULL, component = state.names, time = NULL)
 
   ans$state.specification <- state.specification
   ans$regression.prior <- regression.prior
@@ -180,10 +180,10 @@ bsts.mixed <- function(target.series,
 ##=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 plot.bsts.mixed <- function(x,
                             y = c("state",
-                              "components",
-                              "coefficients",
-                              "predictors",
-                              "size"),
+                                "components",
+                                "coefficients",
+                                "predictors",
+                                "size"),
                             ...) {
   ## S3 method for plotting bsts.mixed objects.
   ## Args:
@@ -266,7 +266,7 @@ PlotBstsMixedState <- function(bsts.mixed.object,
                         ...)
     } else {
       PlotDynamicDistribution(state,
-                              time = time,
+                              timestamps = time,
                               ...)
     }
     last.observed.date <- tail(index(bsts.mixed.object$original.series), 1)
@@ -280,12 +280,12 @@ PlotBstsMixedState <- function(bsts.mixed.object,
     stopifnot(is.logical(trim.right) || is.null(trim.right))
 
     aggregate.state <-
-      AggregateTimeSeries(state,
-                          bsts.mixed.object$contains.end,
-                          bsts.mixed.object$fraction.in.preceding.interval,
-                          byrow = FALSE,
-                          trim.left = trim.left,
-                          trim.right = trim.right)
+        AggregateTimeSeries(state,
+                            bsts.mixed.object$contains.end,
+                            bsts.mixed.object$fraction.in.preceding.interval,
+                            byrow = FALSE,
+                            trim.left = trim.left,
+                            trim.right = trim.right)
     time <- index(bsts.mixed.object$original.series)
     state.time <- ncol(aggregate.state)
     if (length(time) < state.time) {
@@ -299,7 +299,7 @@ PlotBstsMixedState <- function(bsts.mixed.object,
     if (style == "boxplot") {
       TimeSeriesBoxplot(aggregate.state, time = extra.time, ...)
     } else {
-      PlotDynamicDistribution(aggregate.state, time = extra.time, ...)
+      PlotDynamicDistribution(aggregate.state, timestamps = extra.time, ...)
     }
     original.series <- bsts.mixed.object$original.series
     points(time, original.series, col = "blue", ...)
@@ -390,12 +390,12 @@ PlotBstsMixedComponents <- function(
     stopifnot(is.logical(trim.right) || is.null(trim.right))
     for (component in 1:number.of.components) {
       aggregate.state[[component]] <-
-        AggregateTimeSeries(state[, component, ],
-                            bsts.mixed.object$contains.end,
-                            bsts.mixed.object$fraction.in.preceding.interval,
-                            byrow = FALSE,
-                            trim.left = trim.left,
-                            trim.right = trim.right)
+          AggregateTimeSeries(state[, component, ],
+                              bsts.mixed.object$contains.end,
+                              bsts.mixed.object$fraction.in.preceding.interval,
+                              byrow = FALSE,
+                              trim.left = trim.left,
+                              trim.right = trim.right)
     }
 
     ## Convert the list to a 3-way array with dimensions
@@ -440,7 +440,7 @@ PlotBstsMixedComponents <- function(
     } else {
       PlotDynamicDistribution(state[, component, ],
                               ylim = ylim,
-                              time = extra.time,
+                              timestamps = extra.time,
                               ...)
     }
     title(main = state.component.names[component])
@@ -496,7 +496,7 @@ SimulateFakeMixedFrequencyData <- function(nweeks,
                                size = number.nonzero,
                                replace = FALSE)
   beta[nonzero.predictors] <-
-    rnorm(number.nonzero, 0, beta.sd)
+      rnorm(number.nonzero, 0, beta.sd)
   slope <- 0
   level <- 0
 
@@ -603,10 +603,10 @@ HarveyCumulator <- function(fine.series, contains.end, membership.fraction) {
       ## as.numeric is necessary for some time series classes that
       ## require time stamps to match when adding.
       cumulator <- as.numeric(cumulator) +
-        as.numeric(membership.fraction[i]) * fine.series[i]
+          as.numeric(membership.fraction[i]) * fine.series[i]
       ans[i] <- cumulator
       cumulator <- (1 - membership.fraction[i]) *
-        as.numeric(fine.series[i])
+          as.numeric(fine.series[i])
 
     } else {
       ## If week i does not contain the end of a month then all of

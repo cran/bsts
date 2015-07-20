@@ -81,7 +81,7 @@
   \item{ylim}{Limits for the vertical axis.  Optional.}
 
   \item{...}{Additional arguments to be passed to
-    \code{\link{PlotDynamicDistribution}} or \code{\link{TimeSeriesBoxplot}}}
+    \code{\link[Boom]{PlotDynamicDistribution}} or \code{\link{TimeSeriesBoxplot}}}
 
 }
 
@@ -126,7 +126,7 @@
 
 \seealso{
   \code{\link{bsts.mixed}}
-  \code{\link{PlotDynamicDistribution}}
+  \code{\link[Boom]{PlotDynamicDistribution}}
   \code{\link[BoomSpikeSlab]{plot.lm.spike}}
   \code{\link{PlotBstsSize}}
 }

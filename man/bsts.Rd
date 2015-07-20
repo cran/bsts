@@ -258,6 +258,19 @@ bsts(formula,
   ss <- AddLocalLinearTrend(list(), y)
   model <- bsts(y, state.specification = ss, niter = 500)
   MakePlots(model)
+
+\dontrun{
+  ## Example 6:  Including regressors
+  data(iclaims)
+  ss <- AddLocalLinearTrend(list(), initial.claims$iclaimsNSA)
+  ss <- AddSeasonal(ss, initial.claims$iclaimsNSA, nseasons = 52)
+  model <- bsts(iclaimsNSA ~ ., state.specification = ss, data =
+                initial.claims, niter = 1000)
+  plot(model)
+  plot(model, "components")
+  plot(model, "coefficients")
+  plot(model, "predictors")
+}
 }
 
 }

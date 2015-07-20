@@ -63,6 +63,6 @@
 
 \seealso{
   \code{\link{bsts}}
-  \code{\link{PlotDynamicDistribution}}
+  \code{\link[Boom]{PlotDynamicDistribution}}
   \code{\link[BoomSpikeSlab]{plot.lm.spike}}
 }

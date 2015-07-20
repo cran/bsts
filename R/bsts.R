@@ -250,7 +250,7 @@ bsts <- function(formula,
 
     variable.names <- dimnames(x)[[2]]
     if (!is.null(variable.names)) {
-        dimnames(ans$coefficients)[[2]] <- variable.names
+      dimnames(ans$coefficients)[[2]] <- variable.names
     }
 
   } else {
@@ -287,7 +287,13 @@ bsts <- function(formula,
   ## All the plotting functions depend on y being a zoo or object, so
   ## they can call index() on it to get the dates.  Note that a ts or
   ## plain numeric object can be converted to zoo using as.zoo.
-  ans$original.series <- as.zoo(y)
+  if (!missing(data) &&
+      length(y) == nrow(data) &&
+      is.zoo(data)) {
+      ans$original.series <- zoo(y, index(data))
+  } else {
+      ans$original.series <- as.zoo(y)
+  }
 
   if (save.state.contributions) {
     ## Store the names of each state model in the appropriate dimname
@@ -339,9 +345,9 @@ bsts <- function(formula,
     if (is.na(trend.position)) trend.position <- 1
 
     bsts.object$state.contributions[, trend.position, ] <-
-      bsts.object$state.contributions[, trend.position, ] + intercept
+        bsts.object$state.contributions[, trend.position, ] + intercept
     bsts.object$state.contributions[, "regression", ] <-
-      bsts.object$state.contributions[, "regression", ] - intercept
+        bsts.object$state.contributions[, "regression", ] - intercept
     bsts.object$coefficients[, intercept.position] <- 0
 
     ## We also need to add the intercept term into the right component
@@ -351,16 +357,16 @@ bsts <- function(formula,
     ## overall contribution of each state component).
     trend.components.index <- match("trend", names(state.sizes))
     trend.components.index <-
-      trend.components.index[!is.na(trend.components.index)]
+        trend.components.index[!is.na(trend.components.index)]
     stopifnot(length(trend.components.index) == 1)
     trend.starting.position <- 1
     if (trend.components.index > 1) {
       trend.starting.position <-
-        1 + cumsum(state.sizes[1:(trend.components.index - 1)])
+          1 + cumsum(state.sizes[1:(trend.components.index - 1)])
     }
 
     bsts.object$final.state[, trend.starting.position] <-
-          bsts.object$final.state[, trend.starting.position] + intercept
+        bsts.object$final.state[, trend.starting.position] + intercept
   }
   return(bsts.object)
 }
@@ -368,9 +374,9 @@ bsts <- function(formula,
 ###----------------------------------------------------------------------
 plot.bsts <- function(x,
                       y = c("state", "components", "residuals", "coefficients",
-                        "prediction.errors", "forecast.distribution",
-                        "predictors", "size",
-                        "dynamic"),
+                          "prediction.errors", "forecast.distribution",
+                          "predictors", "size",
+                          "dynamic", "seasonal", "help"),
                       ...) {
   ## S3 method for plotting bsts objects.
   ## Args:
@@ -381,7 +387,6 @@ plot.bsts <- function(x,
   ## Returns:
   ##   This function is called for its side effect, which is to
   ##   produce a plot on the current graphics device.
-
   y <- match.arg(y)
   if (y == "state") {
     PlotBstsState(x, ...)
@@ -401,6 +406,10 @@ plot.bsts <- function(x,
     PlotBstsSize(x, ...)
   } else if (y == "dynamic") {
     PlotDynamicRegression(x, ...)
+  } else if (y == "seasonal") {
+    PlotSeasonalEffect(x, ...)
+  } else if (y == "help") {
+    help("plot.bsts", package = "bsts", help_type = "html")
   }
 }
 
@@ -494,7 +503,7 @@ PlotBstsPredictors <- function(bsts.object,
   stopifnot(inherits(bsts.object, "bsts"))
   beta <- bsts.object$coefficients
   if (burn > 0) {
-    beta <- beta[-(1:burn), ]
+    beta <- beta[-(1:burn), , drop = FALSE]
   }
 
   inclusion.probabilities <- colMeans(beta != 0)
@@ -596,15 +605,13 @@ PlotBstsCoefficients <- function(bsts.object,
   if (is.null(bsts.object$coefficients)) {
     stop("no coefficients to plot in PlotBstsCoefficients")
   }
-  coef <- bsts.object$coefficients
-  class(coef) <- "lm.spike"
-  tmp <- list(beta = bsts.object$coefficients)
-  class(tmp) <- "lm.spike"
-  return(invisible(plot.lm.spike(tmp,
-                                 burn,
-                                 inclusion.threshold,
-                                 number.of.variables = number.of.variables,
-                                 ...)))
+  return(invisible(
+      PlotMarginalInclusionProbabilities(
+          bsts.object$coefficients,
+          burn = burn,
+          inclusion.threshold = inclusion.threshold,
+          number.of.variables = number.of.variables,
+          ...)))
 }
 ###----------------------------------------------------------------------
 PlotBstsSize <- function(bsts.object,
@@ -624,7 +631,7 @@ PlotBstsSize <- function(bsts.object,
     stop("The model has no coefficients")
   }
   if (burn > 0) {
-    beta <- beta[-(1:burn), ]
+    beta <- beta[-(1:burn), , drop = FALSE]
   }
   size <- rowSums(beta != 0)
   style <- match.arg(style)
@@ -700,7 +707,7 @@ PlotBstsComponents <- function(bsts.object,
   }
   for (component in 1:number.of.components) {
     if (!have.ylim) {
-      ylim <- if (same.scale) scale else range(state[ , component, ])
+      ylim <- if (same.scale) scale else range(state[, component, ])
     }
     if (style == "boxplot") {
       TimeSeriesBoxplot(state[, component, ],
@@ -709,7 +716,7 @@ PlotBstsComponents <- function(bsts.object,
                         ...)
     } else {
       PlotDynamicDistribution(state[, component, ],
-                              time = time,
+                              timestamps = time,
                               ylim = ylim,
                               ...)
     }
@@ -749,7 +756,7 @@ PlotBstsState <- function(bsts.object, burn = SuggestBurn(.1, bsts.object),
   if (style == "boxplot") {
     TimeSeriesBoxplot(state, time = time, ...)
   } else {
-    PlotDynamicDistribution(state, time = time, ...)
+    PlotDynamicDistribution(state, timestamps = time, ...)
   }
   if (show.actuals) {
     points(time, bsts.object$original.series, col = "blue", ...)
@@ -782,7 +789,7 @@ PlotBstsPredictionErrors <- function(bsts.object,
 
   errors <- bsts.prediction.errors(bsts.object, burn = burn)
   if (style == "dynamic") {
-    PlotDynamicDistribution(errors, time = time, ...)
+    PlotDynamicDistribution(errors, timestamps = time, ...)
   } else {
     TimeSeriesBoxplot(errors, time = time, ...)
   }
@@ -824,7 +831,7 @@ PlotBstsForecastDistribution <- function(bsts.object,
   errors <- bsts.prediction.errors(bsts.object, burn = burn)
   forecast <- t(as.numeric(bsts.object$original.series) - t(errors))
   if (style == "dynamic") {
-    PlotDynamicDistribution(forecast, time = time, ...)
+    PlotDynamicDistribution(forecast, timestamps = time, ...)
   } else {
     TimeSeriesBoxplot(forecast, time = time, ...)
   }
@@ -834,6 +841,42 @@ PlotBstsForecastDistribution <- function(bsts.object,
   }
   return(invisible(NULL))
 }
+###----------------------------------------------------------------------
+residuals.bsts <- function(object,
+                           burn = SuggestBurn(.1, object),
+                           mean.only = FALSE,
+                           ...) {
+  ## Args:
+  ##   object:  An object of class 'bsts'.
+  ##   burn:  The number of iterations to discard as burn-in.
+  ##   mean.only: Logical.  If TRUE then the mean residual for each
+  ##     time period is returned.  If FALSE then the full posterior
+  ##     distribution is returned.
+  ##   ...: Not used.  This argument is here to comply with the
+  ##     generic 'residuals' function.
+  ##
+  ## Returns:
+  ##   If mean.only is TRUE then this function returns a vector of
+  ##   residuals with the same "time stamp" as the original series.
+  ##   If mean.only is FALSE then the posterior distribution of the
+  ##   residuals is returned instead, as a matrix of draws.  Each row
+  ##   of the matrix is an MCMC draw, and each column is a time point.
+  ##   The colnames of the returned matrix will be the timestamps of
+  ##   the original series, as text.
+  state <- object$state.contributions
+  if (burn > 0) {
+    state <- state[-(1:burn), , , drop = FALSE]
+  }
+  state <- rowSums(aperm(state, c(1, 3, 2)), dims = 2)
+  residuals <- t(t(state) - as.numeric(object$original.series))
+  if (mean.only) {
+    residuals <- zoo(colMeans(residuals), index(object$original.series))
+  } else {
+    residuals <- t(zoo(t(residuals), index(object$original.series)))
+  }
+  return(residuals)
+}
+
 ###----------------------------------------------------------------------
 PlotBstsResiduals <- function(bsts.object, burn = SuggestBurn(.1, bsts.object),
                               time, style = c("dynamic", "boxplot"),
@@ -854,18 +897,12 @@ PlotBstsResiduals <- function(bsts.object, burn = SuggestBurn(.1, bsts.object),
   ##   produce a plot on the current graphics device.
   stopifnot(inherits(bsts.object, "bsts"))
   style <- match.arg(style)
-
   if (missing(time)) {
     time <- index(bsts.object$original.series)
   }
-  state <- bsts.object$state.contributions
-  if (burn > 0) {
-    state <- state[-(1:burn), , , drop = FALSE]
-  }
-  state <- rowSums(aperm(state, c(1, 3, 2)), dims = 2)
-  residuals <- t(t(state) - as.numeric(bsts.object$original.series))
+  residuals <- residuals(bsts.object)
   if (style == "dynamic") {
-    PlotDynamicDistribution(residuals, time = time, ...)
+    PlotDynamicDistribution(residuals, timestamps = time, ...)
   } else {
     TimeSeriesBoxplot(residuals, time = time, ...)
   }
@@ -873,13 +910,13 @@ PlotBstsResiduals <- function(bsts.object, burn = SuggestBurn(.1, bsts.object),
 }
 
 ###----------------------------------------------------------------------
-PlotDynamicRegression <- function(bsts.object,
-                                  burn = SuggestBurn(.1, bsts.object),
-                                  time = NULL,
-                                  style = c("dynamic", "boxplot"),
-                                  layout = c("square", "horizontal",
-                                    "vertical"),
-                                  ...) {
+PlotDynamicRegression <- function(
+    bsts.object,
+    burn = SuggestBurn(.1, bsts.object),
+    time = NULL,
+    style = c("dynamic", "boxplot"),
+    layout = c("square", "horizontal", "vertical"),
+    ...) {
   ## Plot the coefficients of a dynamic regression state component.
   ## Args:
   ##   bsts.object: The bsts object containing the dynamic regression
@@ -934,7 +971,7 @@ PlotDynamicRegression <- function(bsts.object,
                         ...)
     } else if (style == "dynamic") {
       PlotDynamicDistribution(beta[, variable, ],
-                              time = time,
+                              timestamps = time,
                               ...)
     }
     title(beta.names[variable])
@@ -998,7 +1035,7 @@ predict.bsts <- function(object, newdata, horizon = 1,
 
   stopifnot(inherits(object, "bsts"))
 
-## TODO(stevescott): predict method for dynamic regressions
+  ## TODO(stevescott): predict method for dynamic regressions
 
   if (object$has.regression) {
     if (missing(newdata)) {
@@ -1058,13 +1095,13 @@ predict.bsts <- function(object, newdata, horizon = 1,
     }
 
     predictive.distribution <-
-      .Call("bsts_predict_state_space_regression_",
-            object,
-            X,
-            burn,
-            oldX,
-            oldy,
-            PACKAGE = "bsts")
+        .Call("bsts_predict_state_space_regression_",
+              object,
+              X,
+              burn,
+              oldX,
+              oldy,
+              PACKAGE = "bsts")
   } else {
     ## Handle the no-regression case.
     niter <- length(object$sigma.obs)
@@ -1075,12 +1112,12 @@ predict.bsts <- function(object, newdata, horizon = 1,
     stopifnot(is.null(olddata) || is.numeric(olddata))
 
     predictive.distribution <-
-      .Call("bsts_predict_state_space_model_",
-            object,
-            horizon,
-            burn,
-            olddata,
-            PACKAGE = "bsts")
+        .Call("bsts_predict_state_space_model_",
+              object,
+              horizon,
+              burn,
+              olddata,
+              PACKAGE = "bsts")
   }
 
   ans <- list("mean" = colMeans(predictive.distribution),
@@ -1226,9 +1263,11 @@ plot.bsts.prediction <- function(x,
   ##   burn: The number of observations you wish to discard as burn-in
   ##     from the posterior predictive distribution.  This is in
   ##     addition to the burn-in discarded using predict.bsts.
-  ##   plot.original: Logical.  If true then the prediction is plotted
-  ##     after a time series plot of the original series.  Otherwise,
-  ##     the prediction fills the entire plot.
+  ##   plot.original: Logical or numeric.  If TRUE then the prediction
+  ##     is plotted after a time series plot of the original series.
+  ##     If FALSE, the prediction fills the entire plot.  If numeric,
+  ##     then it specifies the number of trailing observations of the
+  ##     original time series to plot.
   ##   median.color: The color to use for the posterior median of the
   ##     prediction.
   ##   median.type: The type of line (lty) to use for the posterior median
@@ -1257,7 +1296,7 @@ plot.bsts.prediction <- function(x,
   prediction <- x
   if (burn > 0) {
     prediction$distribution <-
-      prediction$distribution[-(1:burn), , drop = FALSE]
+        prediction$distribution[-(1:burn), , drop = FALSE]
     prediction$median <- apply(prediction$distribution, 2, median)
     prediction$interval <- apply(prediction$distribution, 2,
                                  quantile, c(.025, .975))
@@ -1265,21 +1304,25 @@ plot.bsts.prediction <- function(x,
   prediction$interval <- apply(prediction$distribution, 2,
                                quantile, interval.quantiles)
 
-  n0 <- length(prediction$original.series)
+  original.series <- prediction$original.series
+  if (is.numeric(plot.original)) {
+    original.series <- tail(original.series, plot.original)
+    plot.original <- TRUE
+  }
   n1 <- ncol(prediction$distribution)
 
-  time <- index(prediction$original.series)
+  time <- index(original.series)
   deltat <- tail(diff(tail(time, 2)), 1)
 
   if (is.null(ylim)) {
     ylim <- range(prediction$distribution,
-                  prediction$original.series)
+                  original.series)
   }
 
   if (plot.original) {
     pred.time <- tail(time, 1) + (1:n1) * deltat
     plot(time,
-         prediction$original.series,
+         original.series,
          type = "l",
          xlim = range(time, pred.time),
          ylim = ylim)
@@ -1290,7 +1333,7 @@ plot.bsts.prediction <- function(x,
   style <- match.arg(style)
   if (style == "dynamic") {
     PlotDynamicDistribution(curves = prediction$distribution,
-                            time = pred.time,
+                            timestamps = pred.time,
                             add = plot.original,
                             ylim = ylim,
                             ...)
@@ -1334,7 +1377,8 @@ SuggestBurn <- function(proportion, bsts.object) {
   ##   bsts.object:  An object of class 'bsts'.
   ## Returns:
   ##   The number of iterations to discard.
-  return(floor(proportion * length(bsts.object$sigma.obs)))
+  burn <- floor(proportion * length(bsts.object$sigma.obs))
+  return(burn)
 }
 
 Shorten <- function(words) {

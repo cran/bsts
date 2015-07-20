@@ -106,8 +106,9 @@ class RegressionStateContributionCallback : public BOOM::MatrixIoCallback {
     ans.last_row() = model_->regression_contribution();
     return ans;
   }
+
  private:
-  BOOM::StateSpaceRegressionModel * model_;
+  BOOM::StateSpaceRegressionModel *model_;
 };
 
 //======================================================================
@@ -184,6 +185,7 @@ RListIoManager SpecifyStateSpaceRegressionModel(
             "one.step.prediction.errors",
             NULL));
   }
+
   return io_manager;
 }
 

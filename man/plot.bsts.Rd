@@ -13,6 +13,7 @@
 \alias{PlotBstsSize}
 \alias{PlotDynamicRegression}
 \alias{PlotBstsForecastDistribution}
+\alias{PlotSeasonalEffect}
 
 \description{Functions to plot the results of a model fit using
   \code{\link{bsts}}.}
@@ -21,7 +22,7 @@
   \method{plot}{bsts}(x, y = c("state", "components", "residuals",
               "coefficients", "prediction.errors",
               "forecast.distribution",
-              "predictors", "size", "dynamic"),
+              "predictors", "size", "dynamic", "seasonal", "help"),
       ...)
 
   PlotBstsCoefficients(bsts.object, burn = SuggestBurn(.1, bsts.object),
@@ -44,6 +45,9 @@
                        time, style = c("dynamic", "boxplot"), ...)
   PlotBstsSize(bsts.object, burn = SuggestBurn(.1, bsts.object), style =
                        c("histogram", "ts"), ...)
+  PlotSeasonalEffect(bsts.object, nseasons = 7, season.duration = 1,
+                     same.scale = TRUE, ylim = NULL, get.season.name = NULL,
+                     burn = SuggestBurn(.1, bsts.object),  ...)
 }
 
 \arguments{
@@ -88,6 +92,30 @@
     argument.  Otherwise all plots will be created with the same
     \code{ylim} values.}
 
+  \item{nseasons}{If there is only one seasonal component in the model,
+    this argument is ignored.  If there are multiple seasonal
+    components then \code{nseasons} and \code{season.duration} are used
+    to select the desired one.}
+
+  \item{season.duration}{If there is only one seasonal component in the
+    model, this argument is ignored.  If there are multiple seasonal
+    components then \code{nseasons} and \code{season.duration} are used
+    to select the desired one.}
+
+  \item{get.season.name}{A function that can be used to infer the title
+    of each seasonal plot.  It should take a single \code{\link{POSIXt}},
+    \code{\link{Date}}, or similar object as an argument, and return
+    a single string that can be used as a panel title.  If
+    \code{get.season.name} is \code{NULL} and \code{nseasons} is
+    specified or inferred to be one of the following values, then the
+    following functions will be used.
+    \itemize{
+      \item 4:  \code{\link{quarters}}
+      \item 7:  \code{\link{weekdays}}
+      \item 12: \code{\link{months}}
+    }
+  }
+
   \item{...}{Additional arguments to be passed to
     \code{\link[Boom]{PlotDynamicDistribution}}}
 }
@@ -113,6 +141,9 @@
 
   \code{\link{PlotBstsSize}} plots the distribution of the number of
   predictors included in the model.
+
+  \code{\link{PlotSeasonalEffect}} generates an array of plots showing
+  how the distibution of the seasonal effect changes, for each season.
 }
 
 \value{
@@ -134,6 +165,6 @@
 
 \seealso{
   \code{\link{bsts}}
-  \code{\link{PlotDynamicDistribution}}
+  \code{\link[Boom]{PlotDynamicDistribution}}
   \code{\link[BoomSpikeSlab]{plot.lm.spike}}
 }

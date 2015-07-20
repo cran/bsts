@@ -50,7 +50,8 @@ CompareBstsModels <- function(model.list,
     matrix(nrow = number.of.models,
            ncol = dim(model.list[[1]]$state.contributions)[3])
   for (i in 1:number.of.models) {
-    prediction.errors <- bsts.prediction.errors(model.list[[i]])[-(1:burn), ]
+    prediction.errors <-
+        bsts.prediction.errors(model.list[[i]])[-(1:burn), , drop = FALSE]
     cumulative.errors[i, ] <- cumsum(abs(colMeans(prediction.errors)))
   }
 

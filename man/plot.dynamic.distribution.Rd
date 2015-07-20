@@ -1,37 +1,43 @@
-% Copyright 2011 Google Inc. All Rights Reserved.
-% Author: stevescott@google.com (Steve Scott)
-
-\name{PlotDynamicDistribution}
-\Rdversion{1.1}
+\name{plot.dynamic.distribution}
+\Rdversion{1.0}
 \alias{PlotDynamicDistribution}
 \title{
-  Plots the evolution of a distribution over time.
+  Plots the pointwise evolution of a distribution over an index set.
 }
-\description{
-  Produces an dynamic distribution plot where gray scale shading is used
-  to show the evolution of a distribution over time.  This function is
-  useful when there are too many time points to do side-by-side boxplots.
-}
+
+\description{ Produces an dynamic distribution plot where gray scale
+  shading is used to show the evolution of a distribution over an index
+  set.  This function is particularly useful when the index set is too
+  large to do side-by-side boxplots.  }
+
 \usage{
-PlotDynamicDistribution(curves, time = 1:ncol(curves), quantile.step=.01,
-                        xlim = range(time), xlab = "time",
-                        ylim = range(curves), ylab = "distribution",
-                        add=FALSE, ...)
+PlotDynamicDistribution(curves,
+                        timestamps = NULL,
+                        quantile.step=.01,
+                        xlim = NULL,
+                        xlab = "Time",
+                        ylim = range(curves, na.rm = TRUE),
+                        ylab = "distribution",
+                        add=FALSE,
+                        ...)
 }
 \arguments{
 
   \item{curves}{ A matrix where each row represents a curve (e.g. a
     simulation of a time series from a posterior distribution) and
-    columns represent time.  A long time series would be a wide matrix.
-    }
+    columns represent different points in the index set.  For example, a
+    long time series would be a wide matrix.  }
 
-  \item{time}{ An optional vector of time points that 'curves' will be
-     plotted against.  Good choices for \code{time} are numeric, or Date (see
-     \code{\link{as.Date}}).
-  }
+  \item{timestamps}{ An optional vector of "time stamps" that
+    \code{curves} will be plotted against.  The length of
+    \code{timestamps} must match the number of columns in \code{curves}.
+    If \code{timestamps} is \code{NULL} then the function attempts to
+    extract time stamps from the \code{colnames(curves)}.  If no
+    appropriate time stamps can be found then the positive integers will
+    be used as time stamps.}
 
   \item{quantile.step}{Each color step in the plot corresponds to this
-    difference in quantiles..  Smaller values make prettier plots, but
+    difference in quantiles.  Smaller values make prettier plots, but
     the plots take longer to produce.}
 
   \item{xlim}{The x limits (x1, x2) of the plot.  Note that \code{ x1 >
@@ -68,7 +74,6 @@ PlotDynamicDistribution(curves, time = 1:ncol(curves), quantile.step=.01,
   PlotDynamicDistribution(x)
   time <- as.Date("2010-01-01", format = "\%Y-\%m-\%d") + (0:99 - 50)*7
   PlotDynamicDistribution(x, time)
-
 }
 
 \keyword{ hplot }

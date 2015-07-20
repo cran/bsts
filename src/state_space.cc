@@ -156,6 +156,7 @@ RListIoManager SpecifyStateSpaceModel(Ptr<StateSpaceModel> model,
             "one.step.prediction.errors",
             NULL));
   }
+
   return io_manager;
 }
 
