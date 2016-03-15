@@ -25,7 +25,7 @@
 #include "R_ext/Arith.h"  // for ISNA/R_IsNA
 
 // BOOM Linear algebra
-using BOOM::Vec;
+using BOOM::Vector;
 using BOOM::Mat;
 using BOOM::Spd;
 
@@ -42,7 +42,6 @@ using BOOM::RListIoManager;
 using BOOM::StandardDeviationListElement;
 using BOOM::ToBoomVector;
 using BOOM::ToBoomMatrix;
-using BOOM::ToBoomSpd;
 using BOOM::VectorListElement;
 using BOOM::GlmCoefsListElement;
 
@@ -83,7 +82,7 @@ class StateRowCallback : public BOOM::VectorIoCallback {
     return model_->time_dimension();
   }
 
-  virtual Vec get_vector() const {
+  virtual Vector get_vector() const {
     if (from_front_) return model_->state().row(row_number_);
     // otherwise, row number counts from back
     int last_row = model_->state().nrow() - 1;
@@ -128,17 +127,17 @@ void AddRegressionPriorAndSetSampler(
   if (!Rf_isNull(r_truth)) {
     SEXP r_beta = getListElement(r_truth, "beta");
     if (r_beta != R_NilValue) {
-      Vec beta = ToBoomVector(r_beta);
+      Vector beta = ToBoomVector(r_beta);
       model->regression_model()->set_Beta(beta);
-      sampler->supress_model_selection();
-      sampler->supress_beta_draw();
+      sampler->suppress_model_selection();
+      sampler->suppress_beta_draw();
     }
 
     SEXP r_sigma_obs = getListElement(r_truth, "sigma.obs");
     if (r_sigma_obs != R_NilValue) {
       double sigma_obs = Rf_asReal(r_sigma_obs);
       model->regression_model()->set_sigsq(sigma_obs * sigma_obs);
-      sampler->supress_sigma_draw();
+      sampler->suppress_sigma_draw();
     }
 
     SEXP r_state = getListElement(r_truth, "state");
@@ -169,7 +168,7 @@ void AddRegressionPriorAndSetSampler(
 //   save_state_history: If true then MCMC simulations will record the
 //     value of the state vector at the time of the final observation
 //     (which is useful for forecasting later).
-//   final_state: A pointer to a BOOM::Vec containing storage for the
+//   final_state: A pointer to a BOOM::Vector containing storage for the
 //     state vector as of the final time point, for 'model'.
 //   augmented_final_state: Final state storage for 'augmented model'.
 //   r_truth: For debugging puposes onlyAn R list containing one or
@@ -188,8 +187,8 @@ RListIoManager SpecifyModel(Ptr<AggregatedStateSpaceRegression> model,
                             SEXP state_specification,
                             SEXP regression_prior,
                             bool save_state_history,
-                            Vec *final_state,
-                            Vec *augmented_final_state,
+                            Vector *final_state,
+                            Vector *augmented_final_state,
                             SEXP r_truth) {
   RListIoManager io_manager;
 
@@ -287,10 +286,10 @@ std::vector<Ptr<FineNowcastingData> > ComputeTrainingData(
     SEXP r_which_coarse_interval,
     SEXP r_membership_fraction,
     SEXP r_ends_interval) {
-  const BOOM::Vec target_series(ToBoomVector(r_target_series));
+  const BOOM::Vector target_series(ToBoomVector(r_target_series));
   const BOOM::Mat predictors(ToBoomMatrix(r_predictors));
   const int * which_coarse_interval(INTEGER(r_which_coarse_interval));
-  const BOOM::Vec membership_fraction(ToBoomVector(r_membership_fraction));
+  const BOOM::Vector membership_fraction(ToBoomVector(r_membership_fraction));
   const int *ends_interval(LOGICAL(r_ends_interval));
 
   std::vector<Ptr<FineNowcastingData> > training_data;
@@ -357,7 +356,7 @@ extern "C" {
       model->set_data(data);
 
       // This is the data that will be used by the secondary model.
-      Vec augmented_data(data.size());
+      Vector augmented_data(data.size());
       Ptr<BOOM::StateSpaceModel> augmented_model(
           new BOOM::StateSpaceModel(augmented_data));
 

@@ -26,7 +26,6 @@
                                  ...)
 }
 
-
 \arguments{
 
   \item{x}{An object of class \code{\link{bsts.prediction}}
@@ -35,9 +34,12 @@
   \item{y}{A dummy argument necessary to match the signature of the
     \code{\link{plot}} generic function.  This argument is unused.}
 
-  \item{plot.original}{Logical.  If \code{TRUE} then the prediction is
-    plotted after a time series plot of the original series.  Otherwise,
-    the prediction fills the entire plot.}
+  \item{plot.original}{Logical or numeric.  If \code{TRUE} then the
+      prediction is plotted after a time series plot of the original
+      series.  If \code{FALSE}, the prediction fills the entire plot.
+      If numeric, then it specifies the number of trailing observations
+      of the original time series to plot in addition to the
+      predictions.}
 
   \item{burn}{The number of observations you wish to discard as burn-in
        from the posterior predictive distribution.  This is in addition

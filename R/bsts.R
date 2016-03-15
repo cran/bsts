@@ -1,6 +1,6 @@
-# Copyright 2011 Google Inc. All Rights Reserved.
-# Author: stevescott@google.com (Steve Scott)
-
+## This file implements the main bsts function and most of its methods
+## (plot, print, summary).
+##
 ## Two use cases:
 ## bsts(y ~ formula, data = my.data, state.specification = ss)
 ## bsts(y, state.specification = ss)
@@ -10,8 +10,12 @@
 ## predictors.
 
 ###----------------------------------------------------------------------
+### TODO(stevescott): consider removing save.state.contributions and
+### save.prediction.errors.
+### TODO(stevescott):  consider consolidating options.
 bsts <- function(formula,
                  state.specification,
+                 family = c("gaussian", "logit", "poisson", "student"),
                  save.state.contributions = TRUE,
                  save.prediction.errors = TRUE,
                  data,
@@ -24,6 +28,7 @@ bsts <- function(formula,
                  na.action = na.pass,
                  niter,
                  ping = niter / 10,
+                 timeout.seconds = Inf,
                  seed = NULL,
                  ...) {
   ## Uses MCMC to sample from the posterior distribution of a Bayesian
@@ -43,15 +48,21 @@ bsts <- function(formula,
   ##
   ## Args:
   ##   formula: A formula describing the regression portion of the
-  ##     relationship between y and X. If no regressors are desired
-  ##     then the formula can be replaced by a numeric vector giving
-  ##     the time series to be modeled.  Missing values are not
-  ##     allowed.  If the response is of class zoo, xts, or ts then
-  ##     time series information it contains will be used in many of
-  ##     the plot methods called by plot.bsts.
+  ##     relationship between y and X.  See the Details section below
+  ##     about options for y in Poisson or logit models. If no
+  ##     regressors are desired then the formula can be replaced by a
+  ##     numeric vector giving the time series to be modeled.  Missing
+  ##     values are not allowed.  If the response is of class zoo,
+  ##     xts, or ts then time series information it contains will be
+  ##     used in many of the plot methods called by plot.bsts.
   ##   state.specification: a list with elements created by
   ##     AddLocalLinearTrend, AddSeasonal, and similar functions for
   ##     adding components of state.
+  ##   family: The model family of the observation equation.  Standard
+  ##     state space models require the observation family to be
+  ##     Gaussian.  However this requirement can be relaxed to
+  ##     mixtures of Gaussians, which opens the door to several other
+  ##     error distributions such as binomial (logit), Poisson, and T.
   ##   save.state.contributions: Logical.  If TRUE then a 3-way array
   ##     named 'state.contributions' will be stored in the returned
   ##     object.  The indices correspond to MCMC iteration, state
@@ -100,25 +111,38 @@ bsts <- function(formula,
   ##         of the observed (scaled) X'X times (1 +
   ##         eigenvalue.fudge.factor).  This should be a small
   ##         positive number.
-  ##   contrasts: an optional list. See the ‘contrasts.arg’ of
-  ##     ‘model.matrix.default’.  This argument is only used if a
+  ##   contrasts: an optional list containing the names of contrast
+  ##     functions to use when converting factors numeric variables in
+  ##     a regression formula.  This argument works exactly as it does
+  ##     in 'lm'.  The names of the list elements correspond to factor
+  ##     variables in your model formula.  The list elements
+  ##     themselves are the names of contrast functions (see
+  ##     help(contrast) and the 'contrasts.arg' argument to
+  ##     'model.matrix.default').  This argument is only used if a
   ##     model formula is specified.  It can usually be ignored even
   ##     then.
   ##   na.action: What to do about missing values.  The default is to
   ##     allow missing responses, but no missing predictors.  Set this
   ##     to na.omit or na.exclude if you want to omit missing
-  ##     responses altogether.
+  ##     responses altogether, but do so with care, as that will
+  ##     remove observations from the time series.
   ##   niter: a positive integer giving the desired number of MCMC
   ##     draws
   ##   ping: A scalar.  If ping > 0 then the program will print a
   ##     status message to the screen every 'ping' MCMC iterations.
+  ##   timeout.seconds: The number of seconds that sampler will be
+  ##     allowed to run.  If the timeout is exceeded the returned
+  ##     object will be truncated to the final draw that took place
+  ##     before the timeout occurred, as if that had been the
+  ##     requested value of 'niter'.  A timeout is reported through a
+  ##     warning.
   ##   seed: An integer to use as the C++ random seed.  If NULL then
   ##     the C++ seed will be set using the clock.
   ##   ...:  Extra arguments to be passed to SpikeSlabPrior.
   ## Returns:
   ##   An object of class 'bsts', which is a list with the following components
   ##   coefficients: a 'niter' by 'ncol(X)' matrix of MCMC draws of
-  ##     the regression coefficients, where 'X' is the design matrix
+  ##     the regression coefficients, where 'X' is the matrix of predictors
   ##     implied by 'formula'.  This is only present if a model
   ##     formula was supplied
   ##   sigma.obs: a vector of length 'niter' containing MCMC draws of the
@@ -136,23 +160,44 @@ bsts <- function(formula,
   ##
   ##   Finally, if a model formula was supplied, then the returned
   ##   object will contain the information necessary for the predict
-  ##   method to build the design matrix when a new prediction is
+  ##   method to build the predictor matrix when a new prediction is
   ##   made.
+  ##
+  ## Details:
+  ##   If the model family is logit, then there are two ways one can
+  ##   format the response variable.  If the response is 0/1,
+  ##   TRUE/FALSE, or 1/-1, then the response variable can be passed
+  ##   as with any other model family.  If the response is a set of
+  ##   counts out of a specified number of trials then it can be
+  ##   passed as a two-column matrix, where the first column contains
+  ##   the counts of successes and the second contains the count of
+  ##   failures.
+  ##
+  ##   Likewise, if the model family is Poisson, the response can be
+  ##   passed as a single vector of counts, under the assumption that
+  ##   each observation has unit exposure.  If the exposures differ
+  ##   across observations, then the resopnse can be a two column
+  ##   matrix, with the first column containing the event counts and
+  ##   the second containing exposure times.
 
-  if (is.numeric(formula)) {
-    y <- formula
-    regression <- FALSE
-  } else {
-    regression <- TRUE
-  }
-
+  ## Do some error checking before we get started.
+  check.nonnegative.scalar(niter)
+  check.scalar.integer(ping)
   stopifnot(is.null(seed) || length(seed) == 1)
   if (!is.null(seed)) {
     seed <- as.integer(seed)
   }
-  if (regression) {
-    bma.method <- match.arg(bma.method)
-    stopifnot(is.numeric(niter))
+
+  bma.method <- match.arg(bma.method)
+  family <- match.arg(family)
+  has.regression <- !is.numeric(formula)
+
+  if (has.regression) {
+    ##----------------------------------------------------------------------
+    ## Here begins some black magic to extract the responses and the
+    ## matrix of predictors from the model formula and either the
+    ## 'data' argument or from objects present in the parent frame at
+    ## the time of calling.  Most of this was copied from 'lm'.
     function.call <- match.call()
     my.model.frame <- match.call(expand.dots = FALSE)
     frame.match <- match(c("formula", "data", "na.action"),
@@ -174,37 +219,56 @@ bsts <- function(formula,
     my.model.frame <- eval(my.model.frame, parent.frame())
     model.terms <- attr(my.model.frame, "terms")
 
-    y <- model.response(my.model.frame, "numeric")
-    x <- model.matrix(model.terms, my.model.frame, contrasts)
-    if (any(is.na(x))) {
+    predictors <- model.matrix(model.terms, my.model.frame, contrasts)
+    if (any(is.na(predictors))) {
       stop("bsts does not allow NA's in the predictors, only the responses.")
     }
-    if (is.null(prior)) {
-      ## By default, don't accept any draws of the residual standard
-      ## deviation that are greater than 20% larger than the empirical
-      ## SD.
-      sigma.upper.limit <- sd(y, na.rm = TRUE) * 1.2
-      zero <- rep(0, ncol(x))
-      if (bma.method == "SSVS") {
-        ## If using SSVS then the default prior is Zellner's g-prior.
-        prior <- SpikeSlabPrior(x,
-                                y,
-                                optional.coefficient.estimate = zero,
-                                sigma.upper.limit = sigma.upper.limit,
-                                ...)
-      } else if (bma.method == "ODA") {
-        ## If using ODA then you need an independent prior for
-        ## sigma^2, and independent conditional priors for each
-        ## element of beta.
-        prior <- IndependentSpikeSlabPrior(
-            x,
-            y,
-            optional.coefficient.estimate = zero,
-            sigma.upper.limit = sigma.upper.limit,
-            ...)
-      }
-    }
+    response <- model.response(my.model.frame, "any")
+    ## Check that response and predictors are the right size.  The
+    ## response might be a matrix if the model family is logit or
+    ## Poisson.
+    sample.size <- if (is.matrix(response)) nrow(response) else length(response)
+    stopifnot(nrow(predictors) == sample.size)
+
+    ## End of black magic to get predictors and response.
+  } else {
+    response <- formula
+    stopifnot(is.numeric(response))
+    predictors <- NULL
+  }
+
+  ## Grab the timestamps for the response before passing it to
+  ## .FormatBstsDataAndOptions so we can use them later.
+  if (is.zoo(response)) {
+    timestamps <- index(response)
+  } else if (!missing(data) && is.zoo(data)) {
+    timestamps <- index(data)
+  } else timestamps <- NULL
+  formatted.data.and.options <- .FormatBstsDataAndOptions(
+      family, response, predictors, bma.method, oda.options)
+  data.list <- formatted.data.and.options$data.list
+  model.options <- formatted.data.and.options$model.options
+
+  ##----------------------------------------------------------------------
+  ## If no prior was supplied for the observation model then assign a
+  ## default prior.
+  if (is.null(prior)) {
+    prior <- .SetDefaultPrior(
+        data.list,
+        family = family,
+        bma.method = bma.method,
+        ...)
+  }
+  ## Check that the prior is appropriate for the data, options and
+  ## observation model family.
+  if (has.regression) {
     stopifnot(inherits(prior, "SpikeSlabPriorBase"))
+    ## Identify any predictor columns that are all zero, and assign
+    ## them zero prior probability of being included in the model.
+    ## This must be done after the prior has been validated.
+    all.zero <- apply(predictors, 2, function(z) all(z == 0))
+    prior$prior.inclusion.probabilities[all.zero] <- 0
+
     if (bma.method == "ODA") {
       stopifnot(inherits(prior, "IndependentSpikeSlabPrior"))
       stopifnot(is.list(oda.options))
@@ -214,107 +278,176 @@ bsts <- function(formula,
     if (is.null(prior$max.flips)) {
       prior$max.flips <- -1
     }
-
-    ## Identify any columns that are all zero, and assign them zero
-    ## prior probability of being included in the model.
-    all.zero <- apply(x, 2, function(z) all(z == 0))
-    prior$prior.inclusion.probabilities[all.zero] <- 0
-
-    stopifnot(nrow(x) == length(y))
-    ans <- .Call("bsts_fit_state_space_regression_",
-                 as.matrix(x),
-                 as.vector(y),
-                 as.logical(!is.na(y)),
-                 state.specification,
-                 as.logical(save.state.contributions),
-                 as.logical(save.prediction.errors),
-                 prior,
-                 bma.method,
-                 oda.options,
-                 niter,
-                 ping,
-                 seed,
-                 PACKAGE = "bsts")
-
-    ans$regression.prior <- prior
-
-    ## The following will be needed by the predict and summary
-    ## methods.
-    ans$contrasts <- attr(x, "contrasts")
-    ans$xlevels <- .getXlevels(model.terms, my.model.frame)
-    ans$call <- function.call
-    ans$terms <- model.terms
-    ans$mf <- my.model.frame
-    ans$has.regression <- TRUE
-    ans$design.matrix <- x
-
-    variable.names <- dimnames(x)[[2]]
-    if (!is.null(variable.names)) {
-      dimnames(ans$coefficients)[[2]] <- variable.names
-    }
-
-  } else {
-    ## Handle the non-regression case.
-    stopifnot(is.numeric(y))
-
-    if (missing(prior)) {
-      sdy <- sd(y, na.rm = TRUE)
-      ## By default, don't accept any draws of the residual standard
-      ## deviation that are greater than 20% larger than the empirical
-      ## SD.
-      prior <- SdPrior(sigma.guess = sdy,
-                       sample.size = .01,
-                       upper.limit = sdy * 1.2)
-    }
-    stopifnot(inherits(prior, "SdPrior"))
-    ans <- .Call("bsts_fit_state_space_model_",
-                 y,
-                 as.logical(!is.na(y)),
-                 state.specification,
-                 save.state.contributions,
-                 save.prediction.errors,
-                 niter,
-                 prior,
-                 ping,
-                 seed,
-                 PACKAGE = "bsts")
-    ans$has.regression <- FALSE
   }
-  ## End of main if-else block, so ans has been populated in both the
-  ## regression and non-regression cases.
-
+  ##----------------------------------------------------------------------
+  ans <- .Call("fit_bsts_model_",
+               data.list,
+               state.specification,
+               prior,
+               model.options,
+               family,
+               save.state.contributions,
+               save.prediction.errors,
+               niter,
+               ping,
+               timeout.seconds,
+               seed,
+               PACKAGE = "bsts")
+  ans$has.regression <- has.regression
   ans$state.specification <- state.specification
-  ## All the plotting functions depend on y being a zoo or object, so
-  ## they can call index() on it to get the dates.  Note that a ts or
-  ## plain numeric object can be converted to zoo using as.zoo.
-  if (!missing(data) &&
-      length(y) == nrow(data) &&
-      is.zoo(data)) {
-      ans$original.series <- zoo(y, index(data))
-  } else {
-      ans$original.series <- as.zoo(y)
+  ans$family <- family
+  ans$niter <- niter
+  if (!is.null(ans$ngood)) {
+    ans <- .Truncate(ans)
   }
+  ans$original.series <- .ComputeOriginalSeries(timestamps, data.list$response)
 
+  ##----------------------------------------------------------------------
+  ## Add names to state.contributions.
   if (save.state.contributions) {
     ## Store the names of each state model in the appropriate dimname
     ## for state.contributions.
-    nstate <- length(state.specification)
-    state.names <- character(nstate)
-    for (i in seq_len(nstate)) state.names[i] <- state.specification[[i]]$name
+    number.of.state.components <- length(state.specification)
+    state.names <- character(number.of.state.components)
+    for (i in seq_len(number.of.state.components)) {
+      state.names[i] <- state.specification[[i]]$name
+    }
     if (ans$has.regression) {
       state.names <- c(state.names, "regression")
     }
-    dimnames(ans$state.contributions) <- list(mcmc.iteration = NULL,
-                                              component = state.names,
-                                              time = NULL)
+    dimnames(ans$state.contributions) <- list(
+        mcmc.iteration = NULL,
+        component = state.names,
+        time = NULL)
+  }
+  ##----------------------------------------------------------------------
+  ## Put all the regression junk back in, so things like predict() will work.
+  if (ans$has.regression) {
+    ## Save meta-data about the regression model
+    ans$contrasts <- attr(predictors, "contrasts")
+    ans$xlevels <- .getXlevels(model.terms, my.model.frame)
+    ans$terms <- model.terms
+
+    ## Save the predictors, and assign names to the regression coefficients.
+    ans$predictors <- predictors
+    variable.names <- colnames(predictors)
+    if (!is.null(variable.names)) {
+      colnames(ans$coefficients) <- variable.names
+    }
+    ans <- .RemoveInterceptAmbiguity(ans)
   }
 
-  if (ans$has.regression) {
-    ans <- .RemoveInterceptAmbiguity(ans)
+  ##----------------------------------------------------------------------
+  ## Add in family specific data.
+  if (family == "logit") {
+    ans$trials <- data.list$trials
+  } else if (family == "poisson") {
+    ans$exposure <- data.list$exposure
   }
 
   class(ans) <- "bsts"
   return(ans)
+}
+
+###======================================================================
+.SetDefaultPrior <- function(
+    data.list,
+    family = c("gaussian", "logit", "poisson", "student"),
+    bma.method = c("SSVS", "ODA"),
+    ...) {
+  ## Creates a default prior for the bsts observation equation.
+  ## Args:
+  ##   data.list: The formatted list of data produced by
+  ##     .FormatBstsDataAndOptions.
+  ##   family:  The model family for which a prior is needed.
+  ##   bma.method:  The method to use for Bayesian model averaging.
+  ##   ...: Additional arguments passed to SpikeSlabPrior,
+  ##     IndependentSpikeSlabPrior, LogitZellnerPrior, or
+  ##     PoissonZellnerPrior, depending on the model family and
+  ##     bma.method.
+  ## Returns:
+  ##   A default prior distribution.
+  family <- match.arg(family)
+  has.regression <- !is.null(data.list$predictors)
+  if (family == "gaussian") {
+    ## By default, don't accept any draws of the residual standard
+    ## deviation that are greater than 20% larger than the empirical
+    ## SD.
+    sdy <- sqrt(var(data.list$response, na.rm = TRUE))
+    sigma.upper.limit <- sdy * 1.2
+    if (!has.regression) {
+      prior <- SdPrior(sigma.guess = sdy,
+                       sample.size = .01,
+                       upper.limit = sigma.upper.limit)
+    } else {
+      bma.method <- match.arg(bma.method)
+      zero <- rep(0, ncol(data.list$predictors))
+      if (bma.method == "SSVS") {
+        ## If using SSVS then the default prior is Zellner's g-prior.
+        prior <- SpikeSlabPrior(data.list$predictors,
+                                data.list$response,
+                                optional.coefficient.estimate = zero,
+                                sigma.upper.limit = sigma.upper.limit,
+                                ...)
+      } else if (bma.method == "ODA") {
+        ## If using ODA then you need an independent prior for
+        ## sigma^2, and independent conditional priors for each
+        ## element of beta.
+        prior <- IndependentSpikeSlabPrior(
+            data.list$predictors,
+            data.list$response,
+            optional.coefficient.estimate = zero,
+            sigma.upper.limit = sigma.upper.limit,
+            ...)
+      }
+    }
+  } else if (family == "logit") {
+    if (!has.regression) {
+      ## No prior is necessary, but we need to signal the C++ code to
+      ## create a sampler.
+      prior <- NULL
+    } else {
+      prior <- LogitZellnerPrior(predictors = data.list$predictors,
+                                 successes = data.list$response,
+                                 trials = data.list$trials,
+                                 ...)
+    }
+  } else if (family == "poisson") {
+    if (!has.regression) {
+      ## No prior is necessary, but we need to signal the C++ code to
+      ## create a sampler.
+      prior <- NULL
+    } else {
+      prior <- PoissonZellnerPrior(predictors = data.list$predictors,
+                                   counts = data.list$response,
+                                   exposure = data.list$exposure,
+                                 ...)
+    }
+  } else if (family == "student") {
+    sdy <- sqrt(var(data.list$response, na.rm = TRUE))
+    sigma.upper.limit <- sdy * 1.2
+    if (!has.regression) {
+      y <- data.list$response
+      prior <- StudentSpikeSlabPrior(
+          matrix(1.0, nrow = length(y), ncol = 1),
+          y,
+          prior.inclusion.probabilities = 0,
+          ...)
+    } else {
+      zero <- rep(0, ncol(data.list$predictors))
+      prior <- StudentSpikeSlabPrior(
+          data.list$predictors,
+          data.list$response,
+          optional.coefficient.estimate = zero,
+          sigma.upper.limit = sigma.upper.limit,
+          ...)
+    }
+
+  } else {
+    stop("Argument 'family' had an illegal value in the call to",
+         ".SetDefaultPrior")
+  }
+  return(prior)
 }
 
 .RemoveInterceptAmbiguity <- function(bsts.object) {
@@ -326,7 +459,7 @@ bsts <- function(formula,
   if (!bsts.object$has.regression) return(bsts.object)
 
   ## Compute a logical vector indicating which columns contain all 1's.
-  all.ones <- apply(bsts.object$design.matrix,
+  all.ones <- apply(bsts.object$predictors,
                     2,
                     function(column)(all(column == 1)))
   state.sizes <- StateSizes(bsts.object$state.specification)
@@ -340,7 +473,7 @@ bsts <- function(formula,
     intercept.position = match(TRUE, all.ones)
     intercept <- bsts.object$coefficients[, intercept.position]
 
-    state.names <- dimnames(bsts.object)[[2]]
+    state.names <- dimnames(bsts.object$state.contributions)[[2]]
     trend.position <- match("trend", state.names)
     if (is.na(trend.position)) trend.position <- 1
 
@@ -371,1050 +504,70 @@ bsts <- function(formula,
   return(bsts.object)
 }
 
-###----------------------------------------------------------------------
-plot.bsts <- function(x,
-                      y = c("state", "components", "residuals", "coefficients",
-                          "prediction.errors", "forecast.distribution",
-                          "predictors", "size",
-                          "dynamic", "seasonal", "help"),
-                      ...) {
-  ## S3 method for plotting bsts objects.
+.ComputeOriginalSeries <- function(timestamps, response) {
+  ## This function computes the original series passed to the bsts
+  ## function.  This is harder than it sounds, because the response
+  ## has been massaged with as.numeric and potentially been converted
+  ## from a two-column matrix to a vector.
+  ##
+  ## All the plotting functions depend on 'response' being a zoo
+  ## object, so they can call index() on it to get the dates.  Note
+  ## that a ts or plain numeric object can be converted to zoo using
+  ## as.zoo.
+  ##
+  ## Ensuring that response retains the zoo-ness of the input series
+  ## is a pain in the butt.
+  ##
   ## Args:
-  ##   x: An object of class 'bsts'.
-  ##   y: character string indicating the aspect of the model that
-  ##     should be plotted.  Partial matching is allowed,
-  ##     so 'y = "res"' will produce a plot of the residuals.
-  ## Returns:
-  ##   This function is called for its side effect, which is to
-  ##   produce a plot on the current graphics device.
-  y <- match.arg(y)
-  if (y == "state") {
-    PlotBstsState(x, ...)
-  } else if (y == "components") {
-    PlotBstsComponents(x, ...)
-  } else if (y == "residuals") {
-    PlotBstsResiduals(x, ...)
-  } else if (y == "coefficients") {
-    PlotBstsCoefficients(x, ...)
-  } else if (y == "prediction.errors") {
-    PlotBstsPredictionErrors(x, ...)
-  } else if (y == "forecast.distribution") {
-    PlotBstsForecastDistribution(x, ...)
-  } else if (y == "predictors") {
-    PlotBstsPredictors(x, ...)
-  } else if (y == "size") {
-    PlotBstsSize(x, ...)
-  } else if (y == "dynamic") {
-    PlotDynamicRegression(x, ...)
-  } else if (y == "seasonal") {
-    PlotSeasonalEffect(x, ...)
-  } else if (y == "help") {
-    help("plot.bsts", package = "bsts", help_type = "html")
-  }
-}
-
-###----------------------------------------------------------------------
-summary.bsts <- function(object, burn = SuggestBurn(.1, object), ...) {
-  ## Prints a summary of the supplied bsts object.
-  ## Args:
-  ##   object:  An object of class 'bsts'
-  ##   burn:  The number of MCMC iterations to discard as burn-in.
-  ##   ...: Additional arguments passed to summary.lm.spike, if
-  ##     'object' has a regression component.
-  ## Returns:
-  ##   A list of summaries describing the bsts object.
-  ##   residual.sd: The posterior mean of the residual standard
-  ##     deviation parameter.
-  ##   prediction.sd: The standard deviation of the one-step-ahead
-  ##     prediction errors.  These differ from the residuals because
-  ##     they only condition on the data preceding the prediction.
-  ##     The residuals condition on all data in both directions.
-  ##   rquare: The R-square from the model, computing by comparing
-  ##     'residual.sd' to the sample variance of the original series.
-  ##   relative.gof: Harvey's goodness of fit statistic:
-  ##     1 - SSE(prediction errors) / SST(first difference of original series).
-  ##     This is loosly analogous to the R^2 in a regression model.
-  ##     It differs in that the baseline model is a random walk with
-  ##     drift (instead of the sample mean).  Models that fit worse,
-  ##     on average, than the baseline model can have a negative
-  ##     relative.gof score.
-  ##   size: If the original object had a regression component, then
-  ##     'size' summarizes the distribution of the number of nonzero
-  ##     coefficients.
-  ##   coefficients: If the original object had a regression
-  ##     component, then 'coef' contains a summary of the regression
-  ##     coefficients computed using summary.lm.spike.
-
-  stopifnot(inherits(object, "bsts"))
-  sigma.obs <- object$sigma.obs
-  residual.sd <- mean(sigma.obs)
-  rsquare <- 1 - residual.sd^2 / var(object$original.series)
-
-  prediction.errors <- bsts.prediction.errors(object, burn = burn)
-  prediction.sse <- sum(colMeans(prediction.errors)^2)
-  original.series <- as.numeric(object$original.series)
-  dy <- diff(original.series)
-  prediction.sst <- var(dy) * (length(dy) - 1)
-
-  ans <- list(residual.sd = residual.sd,
-              prediction.sd = sd(colMeans(prediction.errors)),
-              rsquare = rsquare,
-              relative.gof = 1 - prediction.sse / prediction.sst)
-
-  ##----------------------------------------------------------------------
-  ## summarize the regression coefficients
-  if (object$has.regression) {
-    beta <- object$coefficients
-    if (burn > 0) {
-      beta <- beta[-(1:burn), , drop = FALSE]
-    }
-    include <- beta != 0
-    model.size <- rowSums(include)
-    ans$size <- summary(model.size)
-    ans$coefficients <- SummarizeSpikeSlabCoefficients(object$coefficients,
-                                                       burn = burn, ...)
-  }
-  return(ans)
-}
-
-###----------------------------------------------------------------------
-PlotBstsPredictors <- function(bsts.object,
-                               burn = SuggestBurn(.1, bsts.object),
-                               inclusion.threshold = .10,
-                               ylim = NULL,
-                               flip.signs = TRUE,
-                               show.legend = TRUE,
-                               grayscale = TRUE,
-                               short.names = TRUE,
-                               ...) {
-  ## Plots the time series of predictors with high probabilities of inclusion
-  ## Args:
-  ##   bsts.object:  A bsts object containing a regression component.
-  ##   burn:  The number of MCMC iterations to discard as burn-in.
-  ##   inclusion.threshold: An inclusion probability that coefficients
-  ##     must exceed in order to be displayed.
-  ##   ylim:  Limits on the vertical axis.
-  ##   flip.signs: If true then a predictor with a negative sign will
-  ##     be flipped before being plotted, to better align visually
-  ##     with the target series.
-  ##   ...:  Extra arguments passed to either 'plot' or 'plot.zoo'.
-  ## Returns:
-  ##   Invisible NULL.
-  stopifnot(inherits(bsts.object, "bsts"))
-  beta <- bsts.object$coefficients
-  if (burn > 0) {
-    beta <- beta[-(1:burn), , drop = FALSE]
-  }
-
-  inclusion.probabilities <- colMeans(beta != 0)
-  keep <- inclusion.probabilities > inclusion.threshold
-  if (any(keep)) {
-
-    predictors <- bsts.object$design.matrix[, keep, drop = FALSE]
-    predictors <- scale(predictors)
-    if (flip.signs) {
-      compute.positive.prob <- function(x) {
-        x <- x[x != 0]
-        if (length(x) == 0) {
-          return(0)
-        }
-        return(mean(x > 0))
-      }
-      positive.prob <- apply(beta[, keep, drop = FALSE], 2,
-                             compute.positive.prob)
-      signs <- ifelse(positive.prob > .5, 1, -1)
-      predictors <- scale(predictors, scale = signs)
-    }
-
-    inclusion.probabilities <- inclusion.probabilities[keep]
-    number.of.predictors <- ncol(predictors)
-    original <- scale(bsts.object$original.series)
-    if (is.null(ylim)) {
-      ylim <- range(predictors, original, na.rm = TRUE)
-    }
-    index <- rev(order(inclusion.probabilities))
-    predictors <- predictors[, index]
-    inclusion.probabilities <- inclusion.probabilities[index]
-    predictor.names <- colnames(predictors)
-    if (short.names) {
-      predictor.names <- Shorten(predictor.names)
-    }
-
-    if (grayscale) {
-      line.colors <- gray(1 - inclusion.probabilities)
-    } else {
-      line.colors <- rep("black", number.of.predictors)
-    }
-    times <- index(bsts.object$original.series)
-    if (number.of.predictors == 1) {
-      plot(times, predictors, type = "l", lty = 1, col = line.colors,
-           ylim = ylim, xlab = "", ylab = "Scaled Value", ...)
-    } else {
-      plot(times, predictors[, 1], type = "n", ylim = ylim, xlab = "",
-           ylab = "Scaled Value", ...)
-      for (i in 1:number.of.predictors) {
-        lines(times, predictors[, i], lty = i, col = line.colors[i], ...)
-      }
-    }
-    lines(zoo(scale(bsts.object$original.series),
-              index(bsts.object$original.series)),
-          col = "blue",
-          lwd = 3)
-    if (show.legend) {
-      legend.text <- paste(round(inclusion.probabilities, 2), predictor.names)
-      legend("topright", legend = legend.text, lty = 1:number.of.predictors,
-             col = line.colors, bg = "white")
-    }
+  ##   timestamps: Either a vector of timestamps (e.g. Date or POSIXt
+  ##     objects), or NULL if timestamps cannot be obtained.
+  ##   response:  A numeric vector
+  if (!is.null(timestamps) && (length(timestamps) == length(response))) {
+    response <- zoo(response, timestamps)
   } else {
-    plot(0, 0, type = "n",
-         main = "No predictors above the inclusion threshold.", ...)
+    response <- as.zoo(response)
   }
-  return(invisible(NULL))
+  return(response)
 }
 
-###----------------------------------------------------------------------
-PlotBstsCoefficients <- function(bsts.object,
-                                 burn = SuggestBurn(.1, bsts.object),
-                                 inclusion.threshold = 0,
-                                 number.of.variables = NULL,
-                                 ...) {
-  ## Creates a plot of the regression coefficients in the bsts.object.
-  ## This is a wrapper for plot.lm.spike from the BoomSpikeSlab package.
+.Truncate <- function(object) {
+  ## Looks through all the elements in object.  Replace any vectors of
+  ## length object$niter, or arrays with leading dimension
+  ## object$niter, with their first object$ngood observations.  This
+  ## function is designed to remove space that was allocated but not
+  ## used because the algorithm experienced an exception or a timeout.
+  ##
   ## Args:
-  ##   bsts.object:  An object of class 'bsts'
-  ##   burn: The number of MCMC iterations to discard as burn-in.
-  ##   inclusion.threshold: An inclusion probability that coefficients
-  ##     must exceed in order to be displayed.
-  ##   number.of.variables: If non-NULL this specifies the number of
-  ##     coefficients to plot, taking precedence over
-  ##     inclusion.threshold.
-  ## Returns:
-  ##   Invisibly returns a list with the following elements:
-  ##   barplot: The midpoints of each bar, which is useful for adding
-  ##     to the plot
-  ##   inclusion.prob: The marginal inclusion probabilities of each
-  ##     variable, ordered smallest to largest (the same ordering as
-  ##     the plot).
-  ##   positive.prob: The probability that each variable has a
-  ##     positive coefficient, in the same order as inclusion.prob.
-  ##   permutation: The permutation of beta that puts the coefficients
-  ##     in the same order as positive.prob and inclusion.prob.  That
-  ##     is: beta[, permutation] will have the most significant
-  ##     coefficients in the right hand columns.
-  stopifnot(inherits(bsts.object, "bsts"))
-  if (is.null(bsts.object$coefficients)) {
-    stop("no coefficients to plot in PlotBstsCoefficients")
-  }
-  return(invisible(
-      PlotMarginalInclusionProbabilities(
-          bsts.object$coefficients,
-          burn = burn,
-          inclusion.threshold = inclusion.threshold,
-          number.of.variables = number.of.variables,
-          ...)))
-}
-###----------------------------------------------------------------------
-PlotBstsSize <- function(bsts.object,
-                         burn = SuggestBurn(.1, bsts.object),
-                         style = c("histogram", "ts"),
-                         ...) {
-  ## Plots the distribution of the number of variables in the bsts model.
-  ## Args:
-  ##   bsts.object:  An object of class 'bsts' to plot.
-  ##   burn: The number of MCMC iterations to discard as burn-in.
-  ##   style:  The desired plot style.
-  ##   ...:  Extra arguments passed to lower level plotting functions.
-  ## Returns:
-  ##   Nothing interesting.  Draws a plot on the current graphics device.
-  beta <- bsts.object$coefficients
-  if (is.null(beta)) {
-    stop("The model has no coefficients")
-  }
-  if (burn > 0) {
-    beta <- beta[-(1:burn), , drop = FALSE]
-  }
-  size <- rowSums(beta != 0)
-  style <- match.arg(style)
-  if (style == "ts") {
-    plot.ts(size, ...)
-  } else if (style == "histogram") {
-    hist(size, ...)
-  }
-  return(invisible(NULL))
-}
-
-###----------------------------------------------------------------------
-PlotBstsComponents <- function(bsts.object,
-                               burn = SuggestBurn(.1, bsts.object),
-                               time,
-                               same.scale = TRUE,
-                               layout = c("square", "horizontal", "vertical"),
-                               style = c("dynamic", "boxplot"),
-                               ylim = NULL,
-                               ...) {
-  ## Plots the posterior distribution of each state model's
-  ## contributions to the mean of the time series.
-  ## Args:
-  ##   bsts.object: An object of class 'bsts'.
-  ##   burn: The number of MCMC iterations to be discarded as burn-in.
-  ##   time: An optional vector of values to plot on the time axis.
-  ##   same.scale: Logical.  If TRUE then all plots will share a
-  ##     common scale for the vertical axis.  Otherwise the veritcal
-  ##     scales for each plot will be determined independently.
-  ##   layout: A text string indicating whether the state components
-  ##     plots should be laid out in a square (maximizing plot area),
-  ##     vertically, or horizontally.
-  ##   style: Either "dynamic", for dynamic distribution plots, or
-  ##     "boxplot", for box plots.  Partial matching is allowed, so
-  ##     "dyn" or "box" would work, for example.
-  ##   ylim:  Limits on the vertical axis.
-  ##   ...: Extra arguments passed to PlotDynamicDistribution.
-  ## Returns:
-  ##   This function is called for its side effect, which is to
-  ##   produce a plot on the current graphics device.
-  stopifnot(inherits(bsts.object, "bsts"))
-  style <- match.arg(style)
-
-  if (missing(time)) {
-    time <- index(bsts.object$original.series)
-  }
-  state <- bsts.object$state.contributions
-  if (burn > 0) {
-    state <- state[-(1:burn), , , drop = FALSE]
-  }
-  dims <- dim(state)
-  number.of.components <- dims[2]
-
-  layout <- match.arg(layout)
-  if (layout == "square") {
-    num.rows <- floor(sqrt(number.of.components))
-    num.cols <- ceiling(number.of.components / num.rows)
-  } else if (layout == "vertical") {
-    num.rows <- number.of.components
-    num.cols <- 1
-  } else if (layout == "horizontal") {
-    num.rows <- 1
-    num.cols <- number.of.components
-  }
-  original.par <- par(mfrow = c(num.rows, num.cols))
-  on.exit(par(original.par))
-
-  names <- dimnames(state)[[2]]
-
-  have.ylim <- !is.null(ylim)
-  if (same.scale) {
-    scale <- range(state)
-  }
-  for (component in 1:number.of.components) {
-    if (!have.ylim) {
-      ylim <- if (same.scale) scale else range(state[, component, ])
-    }
-    if (style == "boxplot") {
-      TimeSeriesBoxplot(state[, component, ],
-                        time = time,
-                        ylim = ylim,
-                        ...)
-    } else {
-      PlotDynamicDistribution(state[, component, ],
-                              timestamps = time,
-                              ylim = ylim,
-                              ...)
-    }
-    title(main = names[component])
-  }
-}
-
-###----------------------------------------------------------------------
-PlotBstsState <- function(bsts.object, burn = SuggestBurn(.1, bsts.object),
-                          time, show.actuals = TRUE,
-                          style = c("dynamic", "boxplot"), ...) {
-  ## Plots the posterior distribution of the mean of the training
-  ## data, as determined by the state.
-  ## Args:
-  ##   bsts.object:  An object of class 'bsts'.
-  ##   burn: The number of MCMC iterations to be discarded as burn-in.
-  ##   time: An optional vector of values to plot on the time axis.
-  ##   show.actuals: If TRUE then the original values from the series
-  ##     will be added to the plot.
-  ##   style: Either "dynamic", for dynamic distribution plots, or
-  ##     "boxplot", for box plots.  Partial matching is allowed, so
-  ##     "dyn" or "box" would work, for example.
-  ##   ...: Extra arguments passed to PlotDynamicDistribution.
-  ## Returns:
-  ##   This function is called for its side effect, which is to
-  ##   produce a plot on the current graphics device.
-  stopifnot(inherits(bsts.object, "bsts"))
-  style <- match.arg(style)
-  if (missing(time)) {
-    time <- index(bsts.object$original.series)
-  }
-  state <- bsts.object$state.contributions
-  if (burn > 0) {
-    state <- state[-(1:burn), , , drop = FALSE]
-  }
-  state <- rowSums(aperm(state, c(1, 3, 2)), dims = 2)
-  if (style == "boxplot") {
-    TimeSeriesBoxplot(state, time = time, ...)
-  } else {
-    PlotDynamicDistribution(state, timestamps = time, ...)
-  }
-  if (show.actuals) {
-    points(time, bsts.object$original.series, col = "blue", ...)
-  }
-}
-
-###----------------------------------------------------------------------
-PlotBstsPredictionErrors <- function(bsts.object,
-                                     burn = SuggestBurn(.1, bsts.object),
-                                     time, style = c("dynamic", "boxplot"),
-                                     ...) {
-  ## Creates a dynamic distribution plot of the one step ahead
-  ## prediction errors from 'bsts.object'.
-  ## Args:
-  ##   bsts.object:  An object of class 'bsts'.
-  ##   burn: The number of MCMC iterations to be discarded as burn-in.
-  ##   time: An optional vector of values to plot on the time axis.
-  ##   style: Either "dynamic", for dynamic distribution plots, or
-  ##     "boxplot", for box plots.  Partial matching is allowed, so
-  ##     "dyn" or "box" would work, for example.
-  ##   ...:  Extra arguments passed to PlotDynamicDistribution.
-  ## Returns:
-  ##   This function is called for its side effect, which is to
-  ##   produce a plot on the current graphics device.
-  stopifnot(inherits(bsts.object, "bsts"))
-  style <- match.arg(style)
-  if (missing(time)) {
-    time <- index(bsts.object$original.series)
-  }
-
-  errors <- bsts.prediction.errors(bsts.object, burn = burn)
-  if (style == "dynamic") {
-    PlotDynamicDistribution(errors, timestamps = time, ...)
-  } else {
-    TimeSeriesBoxplot(errors, time = time, ...)
-  }
-}
-
-###----------------------------------------------------------------------
-PlotBstsForecastDistribution <- function(bsts.object,
-                                         burn = SuggestBurn(.1, bsts.object),
-                                         time,
-                                         style = c("dynamic", "boxplot"),
-                                         show.actuals = TRUE,
-                                         col.actuals = "blue",
-                                         ...) {
-  ## Plots the posterior distribution of the one-step-ahead forecasts
-  ## for a bsts model.  This is the distribution of p(y[t+1] | y[1:t],
-  ## \theta) averaged over p(\theta | y[1:T]).
-  ## Args:
-  ##   bsts.object:  An object of class 'bsts'.
-  ##   burn: The number of MCMC iterations to be discarded as burn-in.
-  ##   time: An optional vector of values to plot on the time axis.
-  ##   style: Either "dynamic", for dynamic distribution plots, or
-  ##     "boxplot", for box plots.  Partial matching is allowed, so
-  ##     "dyn" or "box" would work, for example.
-  ##   show.actuals: If TRUE then the original values from the series
-  ##     will be added to the plot.
-  ##   col.actuals: The color to use when plotting original values
-  ##     from the time series being modeled.
-  ##   ...: Extra arguments passed to TimeSeriesBoxplot,
-  ##     PlotDynamicDistribution, and points.
+  ##   object:  An object that has been fit by bsts.
   ##
   ## Returns:
-  ##   invisible NULL
-  stopifnot(inherits(bsts.object, "bsts"))
-  style = match.arg(style)
-  if (missing(time)) {
-    time = index(bsts.object$original.series)
+  ##   object, with its trailing niter - ngood observations removed,
+  ##   with ngood removed, and with niter set to ngood.
+  if (is.null(object$ngood)) {
+    return(object)
   }
-
-  errors <- bsts.prediction.errors(bsts.object, burn = burn)
-  forecast <- t(as.numeric(bsts.object$original.series) - t(errors))
-  if (style == "dynamic") {
-    PlotDynamicDistribution(forecast, timestamps = time, ...)
-  } else {
-    TimeSeriesBoxplot(forecast, time = time, ...)
+  ngood <- object$ngood
+  niter <- object$niter
+  if (ngood >= niter) {
+    return(object)
   }
-
-  if (show.actuals) {
-    points(time, bsts.object$original.series, col = col.actuals, ...)
-  }
-  return(invisible(NULL))
-}
-###----------------------------------------------------------------------
-residuals.bsts <- function(object,
-                           burn = SuggestBurn(.1, object),
-                           mean.only = FALSE,
-                           ...) {
-  ## Args:
-  ##   object:  An object of class 'bsts'.
-  ##   burn:  The number of iterations to discard as burn-in.
-  ##   mean.only: Logical.  If TRUE then the mean residual for each
-  ##     time period is returned.  If FALSE then the full posterior
-  ##     distribution is returned.
-  ##   ...: Not used.  This argument is here to comply with the
-  ##     generic 'residuals' function.
-  ##
-  ## Returns:
-  ##   If mean.only is TRUE then this function returns a vector of
-  ##   residuals with the same "time stamp" as the original series.
-  ##   If mean.only is FALSE then the posterior distribution of the
-  ##   residuals is returned instead, as a matrix of draws.  Each row
-  ##   of the matrix is an MCMC draw, and each column is a time point.
-  ##   The colnames of the returned matrix will be the timestamps of
-  ##   the original series, as text.
-  state <- object$state.contributions
-  if (burn > 0) {
-    state <- state[-(1:burn), , , drop = FALSE]
-  }
-  state <- rowSums(aperm(state, c(1, 3, 2)), dims = 2)
-  residuals <- t(t(state) - as.numeric(object$original.series))
-  if (mean.only) {
-    residuals <- zoo(colMeans(residuals), index(object$original.series))
-  } else {
-    residuals <- t(zoo(t(residuals), index(object$original.series)))
-  }
-  return(residuals)
-}
-
-###----------------------------------------------------------------------
-PlotBstsResiduals <- function(bsts.object, burn = SuggestBurn(.1, bsts.object),
-                              time, style = c("dynamic", "boxplot"),
-                              ...) {
-  ## Plots the posterior distribution of the residuals from the bsts
-  ## model, after subtracting off the state effects (including
-  ## regression effects).
-  ## Args:
-  ##   bsts.object:  An object of class 'bsts'.
-  ##   burn: The number of MCMC iterations to be discarded as burn-in.
-  ##   time: An optional vector of values to plot on the time axis.
-  ##   style: Either "dynamic", for dynamic distribution plots, or
-  ##     "boxplot", for box plots.  Partial matching is allowed, so
-  ##     "dyn" or "box" would work, for example.
-  ##   ...:  Extra arguments passed to PlotDynamicDistribution.
-  ## Returns:
-  ##   This function is called for its side effect, which is to
-  ##   produce a plot on the current graphics device.
-  stopifnot(inherits(bsts.object, "bsts"))
-  style <- match.arg(style)
-  if (missing(time)) {
-    time <- index(bsts.object$original.series)
-  }
-  residuals <- residuals(bsts.object)
-  if (style == "dynamic") {
-    PlotDynamicDistribution(residuals, timestamps = time, ...)
-  } else {
-    TimeSeriesBoxplot(residuals, time = time, ...)
-  }
-  return(invisible(NULL))
-}
-
-###----------------------------------------------------------------------
-PlotDynamicRegression <- function(
-    bsts.object,
-    burn = SuggestBurn(.1, bsts.object),
-    time = NULL,
-    style = c("dynamic", "boxplot"),
-    layout = c("square", "horizontal", "vertical"),
-    ...) {
-  ## Plot the coefficients of a dynamic regression state component.
-  ## Args:
-  ##   bsts.object: The bsts object containing the dynamic regression
-  ##     state component to be plotted.
-  ##
-  ##   burn: The number of MCMC iterations to be discarded as burn-in.
-  ##   time: An optional vector of values to plot on the time axis.
-  ##   layout: A text string indicating whether the state components
-  ##     plots should be laid out in a square (maximizing plot area),
-  ##     vertically, or horizontally.
-  ##   style: Either "dynamic", for dynamic distribution plots, or
-  ##     "boxplot", for box plots.  Partial matching is allowed, so
-  ##     "dyn" or "box" would work, for example.
-  ##   ...: Additional arguments passed to PlotDynamicDistribution or
-  ##     TimeSeriesBoxplot.
-  stopifnot(inherits(bsts.object, "bsts"))
-  if (!("dynamic.regression.coefficients" %in% names(bsts.object))) {
-    stop("The model object does not contain a dynamic regression component.")
-  }
-  style <- match.arg(style)
-  if (is.null(time)) {
-    time <- index(bsts.object$original.series)
-  }
-  beta <- bsts.object$dynamic.regression.coefficients
-  ndraws <- dim(beta)[1]
-  number.of.variables <- dim(beta)[2]
-  stopifnot(length(time) == dim(beta)[3])
-
-  if (burn > 0) {
-    beta <- beta[-(1:burn), , , drop = FALSE]
-  }
-
-  layout <- match.arg(layout)
-  if (layout == "square") {
-    num.rows <- floor(sqrt(number.of.variables))
-    num.cols <- ceiling(number.of.variables / num.rows)
-  } else if (layout == "vertical") {
-    num.rows <- number.of.variables
-    num.cols <- 1
-  } else if (layout == "horizontal") {
-    num.rows <- 1
-    num.cols <- number.of.variables
-  }
-  original.par <- par(mfrow = c(num.rows, num.cols))
-  on.exit(par(original.par))
-  beta.names <- dimnames(beta)[[2]]
-
-  for (variable in 1:number.of.variables) {
-    if (style == "boxplot") {
-      TimeSeriesBoxplot(beta[, variable, , ],
-                        time = time,
-                        ...)
-    } else if (style == "dynamic") {
-      PlotDynamicDistribution(beta[, variable, ],
-                              timestamps = time,
-                              ...)
-    }
-    title(beta.names[variable])
-  }
-}
-
-###----------------------------------------------------------------------
-predict.bsts <- function(object, newdata, horizon = 1,
-                         burn = SuggestBurn(.1, object),
-                         na.action = na.exclude, olddata,
-                         quantiles = c(.025, .975), ...) {
-  ## Args:
-  ##   object:  an object of class 'bsts' created using the function 'bsts'
-  ##   newdata: a vector, matrix, or data frame containing the
-  ##     predictor variables to use in making the prediction.  This is
-  ##     only required if 'object' contains a regression compoent.  If
-  ##     a data frame, it must include variables with the same names
-  ##     as the data used to fit 'object'.  The first observation in
-  ##     newdata is assumed to be one time unit after the end of the
-  ##     last data used in fitting 'object', and the subsequent
-  ##     observations are sequential time points.  If the regression
-  ##     part of 'object' contains only a single predictor then
-  ##     newdata can be a vector.  If 'newdata' is passed as a matrix
-  ##     it is the caller's responsibility to ensure that it contains
-  ##     the correct number of columns and that the columns correspond
-  ##     to those in object$coefficients.
-  ##   horizon: An integer specifying the number of periods into the
-  ##     future you wish to predict.  If 'object' contains a regression
-  ##     component then the forecast horizon is nrow(X) and this
-  ##     argument is not used.
-  ##   burn: An integer describing the number of MCMC iterations in
-  ##     'object' to be discarded as burn-in.  If burn <= 0 then no
-  ##     burn-in period will be discarded.
-  ##   na.action: A function determining what should be done with
-  ##     missing values in newdata.
-  ##   olddata: An optional data frame including variables with the
-  ##     same names as the data used to fit 'object'.  If 'olddata' is
-  ##     missing then it is assumed that the first entry in 'newdata'
-  ##     immediately follows the last entry in the training data for
-  ##     'object'.  If 'olddata' is supplied then it will be filtered
-  ##     to get the distribution of the next state before a prediction
-  ##     is made, and it is assumed that the first entry in 'newdata'
-  ##     comes immediately after the last entry in 'olddata'.
-  ##   quantiles: A numeric vector of length 2 giving the lower and
-  ##     upper quantiles to use for the forecast interval estimate.
-  ##   ...: This is a dummy argument included to match the signature
-  ##     of the generic predict() function.  It is not used.
-  ## Returns:
-  ##   An object of class 'bsts.prediction', which is a list with the
-  ##   following elements:
-  ##   mean: A numeric vector giving the posterior mean of the
-  ##     predictive distribution at each time point.
-  ##   interval: A two-column matrix giving the lower and upper limits
-  ##     of the 95% prediction interval at each time point.
-  ##   distribution: A matrix of draws from the posterior predictive
-  ##     distribution.  Each column corresponds to a time point.  Each
-  ##     row is an MCMC draw.
-  ##   original.series: The original series used to fit 'object'.
-  ##     This is used by the plot method to plot the original series
-  ##     and the prediction together.
-
-  stopifnot(inherits(object, "bsts"))
-
-  ## TODO(stevescott): predict method for dynamic regressions
-
-  if (object$has.regression) {
-    if (missing(newdata)) {
-      stop("You need to supply 'newdata' when making predictions with ",
-           "a bsts object that has a regression component.")
-    }
-    if (is.data.frame(newdata)) {
-      tt <- terms(object)
-      Terms <- delete.response(tt)
-      m <- model.frame(Terms, newdata, na.action = na.action,
-                       xlev = object$xlevels)
-      if (!is.null(cl <- attr(Terms, "dataClasses"))) .checkMFClasses(cl, m)
-      X <- model.matrix(Terms, m, contrasts.arg = object$contrasts)
-
-      if (nrow(X) != nrow(newdata)) {
-        msg <- paste("Some entries in newdata have missing values, and  will",
-                     "be omitted from the prediction.")
-        warning(msg)
+  for (i in seq_along(object)) {
+    if (is.array(object[[i]]) && dim(object[[i]])[1] == niter) {
+      array.dim <- dim(object[[i]])
+      if (length(array.dim) == 2) {
+        object[[i]] <- object[[i]][1:ngood, drop = FALSE]
+      } else if (length(array.dim) == 3) {
+        object[[i]] <- object[[i]][1:ngood, , , drop = FALSE]
+      } else if (length(array.dim) == 4) {
+        object[[i]] <- object[[i]][1:ngood, , , , drop = FALSE]
+      } else {
+        stop("Array dimension is too large.")
       }
-      if (ncol(X) != ncol(object$coefficients)) {
-        stop("Wrong number of columns in newdata.  ",
-             "(Check that variable names match?)")
-      }
-
-    } else {
-      X <- as.matrix(newdata)
-      if (ncol(X) == ncol(object$coefficients) - 1) {
-        X <- cbind(1, X)
-      }
-      if (ncol(X) != ncol(object$coefficients)) {
-        stop("Wrong number of columns in newdata")
-      }
-
-      na.rows <- rowSums(is.na(X)) > 0
-      if (any(na.rows)) {
-        warning("Entries in newdata containing missing values will be",
-                "omitted from the prediction")
-        X <- X[!na.rows, ]
-      }
+    } else if (is.numeric(object[[i]]) && length(object[[i]] == niter)) {
+      object[[i]] <- object[[i]][1:ngood]
     }
-
-
-    ## still need to do the predictions
-    if (!missing(olddata)) {
-      ## Need to go through the formula business to get y and x for olddata
-      oldm <- model.frame(tt, olddata, na.action = na.action,
-                          xlev = object$xlevels)
-      if (!is.null(cl <- attr(tt, "dataClasses"))) .checkMFClasses(cl, oldm)
-
-      ## oldX and oldy should be the model matrix and response for the
-      ## old data
-      oldX <- model.matrix(Terms, oldm, contrasts.arg = object$contrasts)
-      oldy <- model.response(oldm, "numeric")
-    } else {
-      oldX <- NULL
-      oldy <- NULL
-    }
-
-    predictive.distribution <-
-        .Call("bsts_predict_state_space_regression_",
-              object,
-              X,
-              burn,
-              oldX,
-              oldy,
-              PACKAGE = "bsts")
-  } else {
-    ## Handle the no-regression case.
-    niter <- length(object$sigma.obs)
-    stopifnot(niter > burn)
-    if (missing(olddata)) {
-      olddata <- NULL
-    }
-    stopifnot(is.null(olddata) || is.numeric(olddata))
-
-    predictive.distribution <-
-        .Call("bsts_predict_state_space_model_",
-              object,
-              horizon,
-              burn,
-              olddata,
-              PACKAGE = "bsts")
   }
-
-  ans <- list("mean" = colMeans(predictive.distribution),
-              "median" = apply(predictive.distribution, 2, median),
-              "interval" = apply(predictive.distribution, 2,
-                                 quantile, quantiles),
-              "distribution" = predictive.distribution,
-              "original.series" = object$original.series)
-  class(ans) <- "bsts.prediction"
-  return(ans)
-}
-
-###----------------------------------------------------------------------
-bsts.prediction.errors <- function(bsts.object,
-                                   newdata,
-                                   burn = SuggestBurn(.1, bsts.object),
-                                   na.action = na.omit) {
-  ## Returns the posterior distribution of the one-step-ahead
-  ## prediction errors from the bsts.object.  The errors are organized
-  ## as a matrix, with rows corresponding to MCMC iteration, and
-  ## columns corresponding to time.
-  ## Args:
-  ##   bsts.object:  An object created by a call to 'bsts'
-  ##   newdata: An optional data.frame containing data that is assumed
-  ##     to immediatly follow the training data (in time).  If
-  ##     'newdata' is supplied the one-step-ahead prediction errors
-  ##     will be relative to the responses in 'newdata'.  Otherwise
-  ##     they will be relative to the training data.
-  ##   burn:  The number of MCMC iterations to discard as burn-in.
-  ##   na.action: A function describing what should be done with NA
-  ##     elements of newdata.
-  ## Returns:
-  ##   A matrix of prediction errors, with rows corresponding to MCMC
-  ##   iteration, and columns to time.
-  if (!missing(newdata)) {
-    return(bsts.holdout.prediction.errors(bsts.object,
-                                          newdata,
-                                          burn,
-                                          na.action))
-  }
-
-  if (!is.null(bsts.object$one.step.prediction.errors)) {
-    return(bsts.object$one.step.prediction.errors)
-  }
-
-  if (bsts.object$has.regression) {
-    errors <- .Call("bsts_one_step_training_prediction_errors_",
-                    bsts.object, burn,
-                    PACKAGE = "bsts")
-  } else {
-    errors <- .Call("bsts_one_step_prediction_errors_no_regression_",
-                    bsts.object, NULL, burn,
-                    PACKAGE = "bsts")
-  }
-  return(errors)
-}
-
-###----------------------------------------------------------------------
-bsts.holdout.prediction.errors <- function(bsts.object,
-                                           newdata,
-                                           burn = SuggestBurn(.1, bsts.object),
-                                           na.action = na.omit) {
-  ## Return the one step ahead prediction errors for the holdout
-  ## sample in 'newdata' which is assumed to follow immediately
-  ## after the training data used to fit 'bsts.object'.
-  ## Args:
-  ##   bsts.object: An object of class 'bsts' for which prediction
-  ##     errors are desired.
-  ##   newdata: A holdout sample of data to be predicted.
-  ##     If 'bsts.object' has a regression component then 'newdata'
-  ##     must be a data.frame containing all the variables that
-  ##     appear in the model formula found in 'bsts.object'.
-  ##     Otherwise, 'newdata' is a numeric vector.
-  ##   burn: The number of MCMC iterations to be discarded as
-  ##     burn-in.  If burn == 0 then no burn-in sample will be
-  ##     discarded.
-  ##   na.action: A function indicating what should be done with
-  ##     NA's in 'newdata'.
-  ## Returns:
-  ##   A matrix of draws of the one-step ahead prediction errors for
-  ##   the holdout sample.  Rows correspond to MCMC iteration.
-  ##   Columns to time.
-  stopifnot(inherits(bsts.object, "bsts"))
-  stopifnot(burn >= 0)
-  if (bsts.object$has.regression) {
-
-    Terms <- terms(bsts.object)
-    m <- model.frame(Terms,
-                     newdata,
-                     na.action = na.action,
-                     xlev = bsts.object$xlevels)
-    if (!is.null(cl <- attr(Terms, "dataClasses"))) .checkMFClasses(cl, m)
-    X <- model.matrix(Terms, m, contrasts.arg = bsts.object$contrasts)
-    y <- model.response(m, "numeric")
-
-    if (nrow(X) != nrow(newdata)) {
-      warning("Some entries in newdata have missing values, and  will ",
-              "be omitted from the prediction.")
-    }
-    stopifnot(length(y) == nrow(X))
-
-    ans <- .Call("bsts_one_step_holdout_prediction_errors_",
-                 bsts.object,
-                 X,
-                 y,
-                 burn,
-                 PACKAGE = "bsts")
-  } else {
-    ## Handle no regression case.
-    stopifnot(is.numeric(newdata))
-    ans <- .Call("bsts_one_step_prediction_errors_no_regression_",
-                 bsts.object,
-                 newdata,
-                 burn,
-                 PACKAGE = "bsts")
-  }
-  class(ans) <- "bsts.prediction.errors"
-  return(ans)
-}
-
-###----------------------------------------------------------------------
-plot.bsts.prediction <- function(x,
-                                 y = NULL,
-                                 burn = 0,
-                                 plot.original = TRUE,
-                                 median.color = "blue",
-                                 median.type = 1,
-                                 median.width = 3,
-                                 interval.quantiles = c(.025, .975),
-                                 interval.color = "green",
-                                 interval.type = 2,
-                                 interval.width = 2,
-                                 style = c("dynamic", "boxplot"),
-                                 ylim = NULL,
-                                 ...) {
-  ## Plots the posterior predictive distribution found in the
-  ## 'prediction' object.
-  ## Args:
-  ##   x: An object with class 'bsts.prediction', generated
-  ##     using the 'predict' method for a 'bsts' object.
-  ##   y: A dummy argument needed to match the signature of the plot()
-  ##     generic function.  It is not used.
-  ##   burn: The number of observations you wish to discard as burn-in
-  ##     from the posterior predictive distribution.  This is in
-  ##     addition to the burn-in discarded using predict.bsts.
-  ##   plot.original: Logical or numeric.  If TRUE then the prediction
-  ##     is plotted after a time series plot of the original series.
-  ##     If FALSE, the prediction fills the entire plot.  If numeric,
-  ##     then it specifies the number of trailing observations of the
-  ##     original time series to plot.
-  ##   median.color: The color to use for the posterior median of the
-  ##     prediction.
-  ##   median.type: The type of line (lty) to use for the posterior median
-  ##     of the prediction.
-  ##   median.width: The width of line (lwd) to use for the posterior median
-  ##     of the prediction.
-  ##   interval.quantiles: The lower and upper limits of the credible
-  ##     interval to be plotted.
-  ##   interval.color: The color to use for the upper and lower limits
-  ##     of the 95% credible interval for the prediction.
-  ##   interval.type: The type of line (lty) to use for the upper and
-  ##     lower limits of the 95% credible inerval for of the
-  ##     prediction.
-  ##   interval.width: The width of line (lwd) to use for the upper and
-  ##     lower limits of the 95% credible inerval for of the
-  ##     prediction.
-  ##   style: What type of plot should be produced?  A
-  ##     DynamicDistribution plot, or a time series boxplot.
-  ##   ylim:  Limits on the vertical axis.
-  ##   ...: Extra arguments to be passed to PlotDynamicDistribution()
-  ##     and lines().
-  ## Returns:
-  ##   This function is called for its side effect, which is to
-  ##   produce a plot on the current graphics device.
-
-  prediction <- x
-  if (burn > 0) {
-    prediction$distribution <-
-        prediction$distribution[-(1:burn), , drop = FALSE]
-    prediction$median <- apply(prediction$distribution, 2, median)
-    prediction$interval <- apply(prediction$distribution, 2,
-                                 quantile, c(.025, .975))
-  }
-  prediction$interval <- apply(prediction$distribution, 2,
-                               quantile, interval.quantiles)
-
-  original.series <- prediction$original.series
-  if (is.numeric(plot.original)) {
-    original.series <- tail(original.series, plot.original)
-    plot.original <- TRUE
-  }
-  n1 <- ncol(prediction$distribution)
-
-  time <- index(original.series)
-  deltat <- tail(diff(tail(time, 2)), 1)
-
-  if (is.null(ylim)) {
-    ylim <- range(prediction$distribution,
-                  original.series)
-  }
-
-  if (plot.original) {
-    pred.time <- tail(time, 1) + (1:n1) * deltat
-    plot(time,
-         original.series,
-         type = "l",
-         xlim = range(time, pred.time),
-         ylim = ylim)
-  } else {
-    pred.time <- tail(time, 1) + (1:n1) * deltat
-  }
-
-  style <- match.arg(style)
-  if (style == "dynamic") {
-    PlotDynamicDistribution(curves = prediction$distribution,
-                            timestamps = pred.time,
-                            add = plot.original,
-                            ylim = ylim,
-                            ...)
-  } else {
-    TimeSeriesBoxplot(prediction$distribution,
-                      time = pred.time,
-                      add = plot.original,
-                      ylim = ylim,
-                      ...)
-  }
-  lines(pred.time, prediction$median, col = median.color,
-        lty = median.type, lwd = median.width, ...)
-  for (i in 1:nrow(prediction$interval)) {
-    lines(pred.time, prediction$interval[i, ], col = interval.color,
-          lty = interval.type, lwd = interval.width, ...)
-  }
-  return(invisible(NULL))
-}
-
-StateSizes <- function(state.specification) {
-  ## Returns a vector giving the number of dimensions used by each state
-  ## component in the state vector.
-  ## Args:
-  ##   state.specification: a vector of state specification elements.
-  ##     This most likely comes from the state.specification element
-  ##     of a bsts.object
-  ## Returns:
-  ##   A numeric vector giving the dimension of each state component.
-  state.component.names <- sapply(state.specification, function(x) x$name)
-  state.sizes <- sapply(state.specification, function(x) x$size)
-  names(state.sizes) <- state.component.names
-  return(state.sizes)
-}
-
-SuggestBurn <- function(proportion, bsts.object) {
-  ## Suggests a size of a burn-in sample to be discarded from the MCMC
-  ## run.
-  ## Args:
-  ##   proportion: A number between 0 and 1.  The fraction of the run
-  ##     to discard.
-  ##   bsts.object:  An object of class 'bsts'.
-  ## Returns:
-  ##   The number of iterations to discard.
-  burn <- floor(proportion * length(bsts.object$sigma.obs))
-  return(burn)
-}
-
-Shorten <- function(words) {
-  ## Removes a prefix and suffix common to all elements of 'words'.
-  ## Args:
-  ##   words:  A character vector.
-  ##
-  ## Returns:
-  ##   'words' with common prefixes and suffixes removed.
-  ##
-  ## Details:
-  ##   Then intent is to use this function on files from the same
-  ##   directory with similar suffixes.
-  ##
-  ##   Shorten(c("/usr/common/foo.tex", "/usr/common/barbarian.tex")
-  ##   produces c("foo", "barbarian")
-  if (is.null(words)) return (NULL)
-  stopifnot(is.character(words))
-  if (length(unique(words)) == 1) {
-    ## If all the words are the same don't do any shortening.
-    return(words)
-  }
-
-  first.letters <- substring(words, 1, 1)
-  while (all(first.letters == first.letters[1])) {
-    words <- substring(words, 2)
-    first.letters <- substring(words, 1, 1)
-  }
-
-  word.length <- nchar(words)
-  last.letters <- substring(words, word.length, word.length)
-  while (all(last.letters == last.letters[1])) {
-    words <- substring(words, 1, word.length - 1)
-    word.length <- word.length - 1
-    last.letters <- substring(words, word.length, word.length)
-  }
-
-  return(words)
+  object$niter <- ngood
+  object$ngood <- NULL
+  return(object)
 }

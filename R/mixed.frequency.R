@@ -170,10 +170,11 @@ bsts.mixed <- function(target.series,
   ans$state.specification <- state.specification
   ans$regression.prior <- regression.prior
   ans$original.series <- target.series
-  ans$design.matrix <- predictors
+  ans$predictors <- predictors
   ans$which.coarse.interval <- which.coarse.interval
   ans$fraction.in.preceding.interval <- membership.fraction
   ans$contains.end <- contains.end
+  ans$niter <- niter
   return(ans)
 }
 
@@ -257,7 +258,7 @@ PlotBstsMixedState <- function(bsts.mixed.object,
 
   if (fine.scale) {
     if (is.null(time)) {
-      time <- index(bsts.mixed.object$design.matrix)
+      time <- index(bsts.mixed.object$predictors)
     }
 
     if (style == "boxplot") {
@@ -353,7 +354,7 @@ PlotBstsMixedComponents <- function(
   stopifnot(inherits(bsts.mixed.object, "bsts.mixed"))
   style <- match.arg(style)
   if (is.null(time)) {
-    time <- index(bsts.mixed.object$design.matrix)
+    time <- index(bsts.mixed.object$predictors)
   }
   state <- bsts.mixed.object$state.contributions
   if (burn > 0) {
@@ -377,7 +378,7 @@ PlotBstsMixedComponents <- function(
   state.component.names <- dimnames(state)[[2]]
 
   if (fine.scale) {
-    time <- index(bsts.mixed.object$design.matrix)
+    time <- index(bsts.mixed.object$predictors)
     extra.time <- time
   } else {
     ## Aggregate the fine scale state to coarse scale, and store the
@@ -428,7 +429,7 @@ PlotBstsMixedComponents <- function(
   user.ylim <- ylim
   for (component in 1:number.of.components) {
     if (is.null(user.ylim)) {
-      ylim <- if (same.scale) scale else range(state[ , component, ])
+      ylim <- if (same.scale) scale else range(state[, component, ])
     } else {
       ylim <- user.ylim
     }
@@ -515,7 +516,7 @@ SimulateFakeMixedFrequencyData <- function(nweeks,
     level <- rnorm(1, level + slope, sigma.level)
     slope <- rnorm(1, slope, sigma.slope)
     trend[i] <- level
-    state[, i] <- c(1,     # regression
+    state[, i] <- c(1,  # regression
                     level,
                     slope)
   }

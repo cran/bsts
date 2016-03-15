@@ -10,11 +10,12 @@
   of a \code{\link{bsts}} object.}
 \usage{
 \method{predict}{bsts}(object,
-        newdata,
+        newdata = NULL,
         horizon = 1,
         burn = SuggestBurn(.1, object),
         na.action = na.exclude,
-        olddata,
+        olddata = NULL,
+        trials.or.exposure = 1,
         quantiles = c(.025, .975),
         ...)
 }
@@ -72,6 +73,14 @@
       is a vector containing historical values of a time series.
     }
   }
+
+  \item{trials.or.exposure}{For logit or Poisson models, the number of
+    binomial trials (or the exposure time) to assume at each time point
+    in the forecast period.  This can either be a scalar (if the number
+    of trials is to be the same for each time period), or it can be a
+    vector with length equal to \code{horizon} (if the model contains no
+    regression term) or \code{nrow(newdata)} if the model contains a
+    regression term.}
 
   \item{quantiles}{A numeric vector of length 2 giving the lower and
     upper quantiles to use for the forecast interval estimate.

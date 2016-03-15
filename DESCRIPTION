@@ -1,15 +1,15 @@
 Package: bsts
-Date: 2015-07-11
+Date: 2016-03-10
 Title: Bayesian Structural Time Series
 Author: Steven L. Scott <stevescott@google.com>
 Maintainer: Steven L. Scott <stevescott@google.com>
 Description: Time series regression using dynamic linear models fit using MCMC.
-Depends: BoomSpikeSlab (>= 0.5.1), zoo, xts, Boom (>= 0.2), R(>= 3.1.0)
+Depends: BoomSpikeSlab (>= 0.5.3), zoo, xts, Boom (>= 0.3), R(>= 3.1.0)
 LinkingTo: Boom, BH (>= 1.15.0-2)
-Version: 0.6.2
+Version: 0.6.3
 License: LGPL-2.1 | file LICENSE
 Encoding: UTF-8
 NeedsCompilation: yes
-Packaged: 2015-07-20 08:00:58 UTC; stevescott
+Packaged: 2016-03-11 16:00:47 UTC; stevescott
 Repository: CRAN
-Date/Publication: 2015-07-20 11:25:51
+Date/Publication: 2016-03-15 16:10:32

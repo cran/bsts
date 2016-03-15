@@ -6,12 +6,11 @@
 
 \Rdversion{1.1}
 \title{
-  Dynamic regression state component
+  Dynamic Regression State Component
 }
 
-\description{
-  Add a dynamic regression model to a state specification.
-}
+\description{ Add a dynamic regression component to the state
+  specification of a bsts model.  }
 
 \usage{
   AddDynamicRegression(
@@ -19,7 +18,7 @@
      formula,
      data,
      sigma.mean.prior = NULL,
-     shrinkage.parameter.prior = NULL,
+     shrinkage.parameter.prior = GammaPrior(a = 10, b = 1),
      contrasts = NULL,
      na.action = na.pass)
 }

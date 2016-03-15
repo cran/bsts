@@ -25,6 +25,7 @@
 \usage{
 bsts(formula,
      state.specification,
+     family = c("gaussian", "logit", "poisson", "student"),
      save.state.contributions = TRUE,
      save.prediction.errors = TRUE,
      data,
@@ -37,6 +38,7 @@ bsts(formula,
      na.action = na.pass,
      niter,
      ping = niter / 10,
+     timeout.seconds = Inf,
      seed = NULL,
      ...)
 }
@@ -59,6 +61,10 @@ bsts(formula,
     \code{\link{AddLocalLinearTrend}}, \code{\link{AddSeasonal}}, and similar
     functions for adding components of state.  See the help page for
     \code{\link{state.specification}}.}
+
+  \item{family}{The model family for the observation equation.
+    Non-Gaussian model families use data augmentation to recover a
+    conditionally Gaussian model.}
 
   \item{save.state.contributions}{Logical.  If \code{TRUE} then a 3-way
     array named \code{state.contributions} will be stored in the
@@ -117,10 +123,17 @@ bsts(formula,
     on the residual standard deviation, expressed as an object created
     by \code{\link[Boom]{SdPrior}}. }
 
-  \item{contrasts}{An optional list. See the \code{contrasts.arg} of
-    \code{\link{model.matrix.default}}.  This argument is only used if a model
-    formula is specified.  Even then the default is usually what you
-    want.}
+  \item{contrasts}{An optional list containing the names of contrast
+    functions to use when converting factors numeric variables in a
+    regression formula.  This argument works exactly as it does in
+    \code{\link{lm}}.  The names of the list elements correspond to
+    factor variables in your model formula.  The list elements
+    themselves are the names of contrast functions (see
+    \code{help(\link[stats]{contr.treatment})} and the
+    \code{contrasts.arg} argument to
+    \code{\link{model.matrix.default}}).  This argument is only used if
+    a model formula is specified, and even then the default is probably
+    what you want.}
 
   \item{na.action}{What to do about missing values.  The default is to
     allow missing responses, but no missing predictors.  Set this to
@@ -134,6 +147,11 @@ bsts(formula,
     If ping > 0 then the program will print a status message to the
     screen every \code{ping} MCMC iterations.}
 
+  \item{timeout.seconds}{The number of seconds that sampler will be
+    allowed to run.  If the timeout is exceeded the returned object will
+    be truncated to the final draw that took place before the timeout
+    occurred, as if that had been the requested value of \code{niter}.}
+
   \item{seed}{An integer to use as the random seed for the underlying
     C++ code.  If \code{NULL} then the seed will be set using the
     clock.}
@@ -141,7 +159,6 @@ bsts(formula,
   \item{...}{ Extra arguments to be passed to
     \code{\link[BoomSpikeSlab]{SpikeSlabPrior}} (see the entry for the \code{prior}
     argument, above).}
-
 }
 
 \value{
@@ -169,6 +186,23 @@ bsts(formula,
   will contain the information necessary for the predict method to build
   the design matrix when a new prediction is made.
 }
+
+\details{
+  If the model family is logit, then there are two ways one can
+  format the response variable.  If the response is 0/1,
+  TRUE/FALSE, or 1/-1, then the response variable can be passed
+  as with any other model family.  If the response is a set of
+  counts out of a specified number of trials then it can be
+  passed as a two-column matrix, where the first column contains
+  the counts of successes and the second contains the count of
+  failures.
+
+  Likewise, if the model family is Poisson, the response can be passed
+  as a single vector of counts, under the assumption that each
+  observation has unit exposure.  If the exposures differ across
+  observations, then the resopnse can be a two column matrix, with the
+  first column containing the event counts and the second containing
+  exposure times.  }
 
 \references{
   Harvey (1990), "Forecasting, structural time series, and the Kalman
