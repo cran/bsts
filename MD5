@@ -1,4 +1,4 @@
-db489ee2926cd564ad6ea09bf0a41e07 *DESCRIPTION
+b36acbcd3679bf49aaf8e8713bcc7339 *DESCRIPTION
 7eb09e6fd83eb49ed22911c3b2f06744 *LICENSE
 77b0e5e553b77ad75d4e4a27e6a709c9 *NAMESPACE
 3c5c0ab86b65f589f216f5b00493af8c *R/add.ar.R
@@ -72,16 +72,16 @@ d57163e548d8d3d98c73c076206cd4e2 *man/summary.bsts.Rd
 ba703f81ad4be6d3ac29a85e9c8e397c *man/timeseries.boxplot.Rd
 57af8d3de323423befb55d02ed034ada *man/week.ends.Rd
 5442c109b338e0fe1e159ab48a2bf06d *src/Makevars
-1eeee71e5c9b8d40de50d83b9660fa59 *src/aggregate_time_series.cc
-6e67221598474c74ae2647663d084b53 *src/bsts.cc
-78b9d1a324db8777ec461d6c23654880 *src/mixed_frequency.cc
+329f5c2a4b884556265575b56e7c0cc7 *src/aggregate_time_series.cc
+b9e63a061f7a09bc7a0ef13e660f1600 *src/bsts.cc
+f246aff45481d5394c45b65d58d1dfba *src/mixed_frequency.cc
 a018b30ec484c5246b0d8f4f5022eab3 *src/model_manager.cc
 be96d943440bcad54510a233ebda6ed8 *src/model_manager.h
 1fd9ab4d4c7476c1552b3bd2809ce92e *src/state_space_gaussian_model_manager.cc
 d94a7f45f987cd281697ad728b8358c8 *src/state_space_gaussian_model_manager.h
 78669ac7c6707568653f9178be79f222 *src/state_space_logit_model_manager.cc
 f4f89c92a9a1ec5d47525613351c7b68 *src/state_space_logit_model_manager.h
-b01c649ff283cee42350461cd0a440e3 *src/state_space_poisson_model_manager.cc
+0979c1dd250e7864245f800935e39a4e *src/state_space_poisson_model_manager.cc
 36526e9c92a816247aa58ca5ef5a2b47 *src/state_space_poisson_model_manager.h
 84529a90869531b8bb986ef9d140d1f5 *src/state_space_regression_model_manager.cc
 80e15c96df989cd2fde323ca89a7b515 *src/state_space_regression_model_manager.h

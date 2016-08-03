@@ -1,3 +1,5 @@
+#include <ctime>
+
 #include "utils.h"
 #include "model_manager.h"
 
@@ -34,6 +36,7 @@ SEXP fit_bsts_model_(
     SEXP r_timeout_in_seconds,
     SEXP r_seed) {
   BOOM::RErrorReporter error_reporter;
+  BOOM::RMemoryProtector protector;
   try {
     BOOM::RInterface::seed_rng_from_R(r_seed);
     BOOM::RListIoManager io_manager;
@@ -67,7 +70,7 @@ SEXP fit_bsts_model_(
     int niter = lround(Rf_asReal(r_niter));
     int ping = lround(Rf_asReal(r_ping));
     double timeout_threshold_seconds = Rf_asReal(r_timeout_in_seconds);
-    SEXP ans = PROTECT(io_manager.prepare_to_write(niter));
+    SEXP ans = protector.protect(io_manager.prepare_to_write(niter));
     clock_t start_time = clock();
     double time_threshold = CLOCKS_PER_SEC * timeout_threshold_seconds;
     for (int i = 0; i < niter; ++i) {
@@ -90,7 +93,6 @@ SEXP fit_bsts_model_(
                   << double(current_time - start_time) / CLOCKS_PER_SEC
                   << " seconds.";
           Rf_warning(warning.str().c_str());
-          UNPROTECT(1);
           return BOOM::appendListElement(
               ans,
               ToRVector(BOOM::Vector(1, i + 1)),
@@ -103,13 +105,11 @@ SEXP fit_bsts_model_(
             << "iteration " << i << ".  Aborting." << std::endl
             << e.what() << std::endl;
         error_reporter.SetError(err.str());
-        UNPROTECT(1);
         return BOOM::appendListElement(ans,
                                        ToRVector(Vector(1, i)),
                                        "ngood");
       }
     }
-    UNPROTECT(1);
     return ans;
   } catch (std::exception &e) {
     BOOM::RInterface::handle_exception(e);

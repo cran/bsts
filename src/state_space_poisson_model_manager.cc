@@ -3,6 +3,8 @@
 
 #include "r_interface/prior_specification.hpp"
 
+#include "cpputil/math_utils.hpp"
+
 #include "Models/StateSpace/PosteriorSamplers/StateSpacePoissonPosteriorSampler.hpp"
 #include "Models/Glm/PosteriorSamplers/PoissonRegressionSpikeSlabSampler.hpp"
 #include "Models/Glm/PosteriorSamplers/PoissonDataImputer.hpp"
@@ -13,8 +15,18 @@ namespace BOOM {
 namespace bsts {
 
 namespace {
-typedef StateSpacePoissonModelManager SSPMM;
-}
+  typedef StateSpacePoissonModelManager SSPMM;
+  void zero_missing_values(
+      Vector *counts,
+      Vector *exposure,
+      const std::vector<bool> &observed) {
+    for (size_t i = 0; i < counts->size(); ++i) {
+      if (!observed[i]) {
+        (*counts)[i] = (*exposure)[i] = 0;
+      }
+    }
+  }
+}   // namespace
 
 SSPMM::StateSpacePoissonModelManager()
     : predictor_dimension_(-1) {}
@@ -37,6 +49,7 @@ StateSpacePoissonModel * SSPMM::CreateObservationModel(
         Matrix(counts.size(), 1.0);
     std::vector<bool> response_is_observed(ToVectorBool(getListElement(
         r_data_list, "response.is.observed")));
+    zero_missing_values(&counts, &exposure, response_is_observed);
     model_.reset(
         new StateSpacePoissonModel(
             counts,
@@ -165,18 +178,18 @@ void SSPMM::AddData(const Vector &counts,
                     const Matrix &predictors,
                     const std::vector<bool> &is_observed) {
   for (int i = 0; i < counts.size(); ++i) {
+    bool missing = (!is_observed.empty() && !is_observed[i]);
     Ptr<StateSpace::AugmentedPoissonRegressionData> data_point(
         new StateSpace::AugmentedPoissonRegressionData(
-            counts[i],
-            exposure[i],
+            missing ? 0 : counts[i],
+            missing ? 0 : exposure[i],
             predictors.row(i)));
-    if (!is_observed.empty() && !is_observed[i]) {
+    if (missing) {
       data_point->set_missing_status(Data::missing_status::completely_missing);
     }
     model_->add_data(data_point);
   }
 }
-
 
 }  // namespace bsts
 }  // namespace BOOM

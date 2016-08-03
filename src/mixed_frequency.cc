@@ -339,6 +339,7 @@ extern "C" {
       SEXP r_seed,
       SEXP r_truth) {
     RErrorReporter error_reporter;
+    BOOM::RMemoryProtector protector;
     try {
       BOOM::RInterface::seed_rng_from_R(r_seed);
 
@@ -378,7 +379,7 @@ extern "C" {
 
       int niter = Rf_asInteger(r_niter);
       int ping = Rf_asInteger(r_ping);
-      SEXP ans = PROTECT(io_manager.prepare_to_write(niter));
+      SEXP ans = protector.protect(io_manager.prepare_to_write(niter));
 
       for (int i = 0; i < niter; ++i) {
         if (RCheckInterrupt()) {
@@ -411,7 +412,6 @@ extern "C" {
           return R_NilValue;
         }
       }
-      UNPROTECT(1);
       return ans;
     } catch(std::exception &e) {
       handle_exception(e);

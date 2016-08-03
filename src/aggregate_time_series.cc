@@ -7,6 +7,7 @@
 #include "LinAlg/SubMatrix.hpp"
 #include "LinAlg/Types.hpp"
 #include "Rinternals.h"
+#include "r_interface/boom_r_tools.hpp"
 
 extern "C" {
   // Sum the results of a fine-scale time series to a coarser scale.
@@ -83,13 +84,13 @@ extern "C" {
       }
     }
 
-    SEXP r_ans;
-    PROTECT(r_ans = Rf_isMatrix(r_fine_series)
-            ? Rf_allocMatrix(REALSXP, num_fine_rows, num_coarse_time_points)
-            : Rf_allocVector(REALSXP, num_coarse_time_points));
+    BOOM::RMemoryProtector protector;
+    SEXP r_ans = protector.protect(
+        Rf_isMatrix(r_fine_series)
+        ? Rf_allocMatrix(REALSXP, num_fine_rows, num_coarse_time_points)
+        : Rf_allocVector(REALSXP, num_coarse_time_points));
     double *ans = REAL(r_ans);
     std::copy(coarse_series.begin(), coarse_series.end(), ans);
-    UNPROTECT(1);
     return r_ans;
   }
 }
