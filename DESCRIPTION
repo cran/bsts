@@ -5,11 +5,11 @@ Author: Steven L. Scott <stevescott@google.com>
 Maintainer: Steven L. Scott <stevescott@google.com>
 Description: Time series regression using dynamic linear models fit using MCMC.
 Depends: BoomSpikeSlab (>= 0.5.3), zoo, xts, Boom (>= 0.3), R(>= 3.1.0)
-LinkingTo: Boom, BH (>= 1.15.0-2)
-Version: 0.6.4
+LinkingTo: Boom (>= 0.5), BH (>= 1.15.0-2)
+Version: 0.6.5
 License: LGPL-2.1 | file LICENSE
 Encoding: UTF-8
 NeedsCompilation: yes
-Packaged: 2016-08-02 16:47:46 UTC; stevescott
+Packaged: 2016-08-14 01:48:52 UTC; stevescott
 Repository: CRAN
-Date/Publication: 2016-08-03 10:09:37
+Date/Publication: 2016-08-19 00:50:59

@@ -1,5 +1,5 @@
-#ifndef BSTS_SRC_STATE_SPACE_REGRESSION_MODEL_MANAGER_H_
-#define BSTS_SRC_STATE_SPACE_REGRESSION_MODEL_MANAGER_H_
+#ifndef ANALYSIS_COMMON_R_BSTS_SRC_STATE_SPACE_REGRESSION_MODEL_MANAGER_H_
+#define ANALYSIS_COMMON_R_BSTS_SRC_STATE_SPACE_REGRESSION_MODEL_MANAGER_H_
 
 #include "state_space_gaussian_model_manager.h"
 #include "Models/StateSpace/StateSpaceRegressionModel.hpp"
@@ -67,4 +67,4 @@ class StateSpaceRegressionModelManager
 }  // namespace bsts
 }  // namespace BOOM
 
-#endif  // BSTS_SRC_STATE_SPACE_REGRESSION_MODEL_MANAGER_H_
+#endif  // ANALYSIS_COMMON_R_BSTS_SRC_STATE_SPACE_REGRESSION_MODEL_MANAGER_H_

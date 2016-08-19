@@ -3,9 +3,6 @@
 #include "utils.h"
 #include "model_manager.h"
 
-#include "r_interface/check_interrupt.h"
-#include "r_interface/error.h"
-
 #include "r_interface/boom_r_tools.hpp"
 #include "r_interface/create_state_model.hpp"
 #include "r_interface/handle_exception.hpp"
@@ -23,7 +20,7 @@ using BOOM::Ptr;
 using BOOM::bsts::ModelManager;
 using BOOM::RCheckInterrupt;
 
-SEXP fit_bsts_model_(
+SEXP analysis_common_r_fit_bsts_model_(
     SEXP r_data_list,
     SEXP r_state_specification,
     SEXP r_prior,
@@ -155,7 +152,7 @@ SEXP fit_bsts_model_(
 //   distribution.  Rows of the matrix correspond to MCMC iterations,
 //   and columns to time points.  The matrix will have 'burn' fewer
 //   rows than the number of MCMC iterations in r_bsts_object.
-SEXP predict_bsts_model_(
+SEXP analysis_common_r_predict_bsts_model_(
     SEXP r_bsts_object,
     SEXP r_prediction_data,
     SEXP r_burn,
@@ -185,7 +182,7 @@ SEXP predict_bsts_model_(
 //   r_holdout_data: This can be R_NilValue, in which case the one
 //     step prediction errors from the training data are computed.  Or
 //     it can be a set of data formatted as in the r_data_list
-//     argument to fit_bsts_model_.  If the latter,
+//     argument to analysis_common_r_fit_bsts_model_.  If the latter,
 //     then it is assumed to be a holdout data set that takes place
 //     immediately after the last observation in the training data.
 //   r_burn: An integer giving the number of burn-in iterations to
@@ -198,7 +195,7 @@ SEXP predict_bsts_model_(
 //    the number of columns in the matrix matches the number of
 //    observations in the holdout data.  Otherwise it matches the
 //    number of observations in the training data.
-SEXP bsts_one_step_prediction_errors_(
+SEXP analysis_common_r_bsts_one_step_prediction_errors_(
     SEXP r_bsts_object,
     SEXP r_holdout_data,
     SEXP r_burn) {

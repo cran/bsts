@@ -5,7 +5,6 @@
 #include <algorithm>
 #include "LinAlg/Matrix.hpp"
 #include "LinAlg/SubMatrix.hpp"
-#include "LinAlg/Types.hpp"
 #include "Rinternals.h"
 #include "r_interface/boom_r_tools.hpp"
 
@@ -31,7 +30,7 @@ extern "C" {
   //   exact beginning or end of a coarse time interval, the left and
   //   right end points of the resulting aggregation will not contain
   //   full aggregates.
-  SEXP bsts_aggregate_time_series_(
+  SEXP analysis_common_r_bsts_aggregate_time_series_(
       SEXP r_fine_series,
       SEXP r_contains_end,
       SEXP r_membership_fraction) {

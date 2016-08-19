@@ -3,9 +3,6 @@
 
 #include <sstream>
 
-#include "r_interface/check_interrupt.h"
-#include "r_interface/error.h"
-
 #include "r_interface/boom_r_tools.hpp"
 #include "r_interface/create_state_model.hpp"
 #include "r_interface/list_io.hpp"
@@ -326,7 +323,7 @@ extern "C" {
   //======================================================================
   // This is the main entry point for fitting mixed frequency time
   // series models.
-  SEXP bsts_fit_mixed_frequency_model_(
+  SEXP analysis_common_r_bsts_fit_mixed_frequency_model_(
       SEXP r_target_series,
       SEXP r_predictors,
       SEXP r_which_coarse_interval,

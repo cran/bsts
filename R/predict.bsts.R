@@ -78,7 +78,7 @@ predict.bsts <- function(object,
     olddata <- .FormatObservedDataForPredictions(object, olddata, na.action)
   }
 
-  predictive.distribution <- .Call("predict_bsts_model_",
+  predictive.distribution <- .Call("analysis_common_r_predict_bsts_model_",
                                    object,
                                    prediction.data,
                                    burn,

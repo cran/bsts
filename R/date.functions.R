@@ -407,7 +407,7 @@ AggregateTimeSeries <- function(fine.series,
     trim.right <- !no.remainder
   }
 
-  aggregate <- .Call("bsts_aggregate_time_series_",
+  aggregate <- .Call("analysis_common_r_bsts_aggregate_time_series_",
                      fine.series,
                      contains.end,
                      membership.fraction,

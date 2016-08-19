@@ -280,7 +280,7 @@ bsts <- function(formula,
     }
   }
   ##----------------------------------------------------------------------
-  ans <- .Call("fit_bsts_model_",
+  ans <- .Call("analysis_common_r_fit_bsts_model_",
                data.list,
                state.specification,
                prior,

@@ -144,7 +144,7 @@ bsts.mixed <- function(target.series,
 
   which.coarse.interval <- as.integer(which.coarse.interval)
 
-  ans <- .Call("bsts_fit_mixed_frequency_model_",
+  ans <- .Call("analysis_common_r_bsts_fit_mixed_frequency_model_",
                target.series,
                predictors,
                which.coarse.interval,

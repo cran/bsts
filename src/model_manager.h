@@ -1,5 +1,5 @@
-#ifndef BSTS_SRC_MODEL_MANAGER_H_
-#define BSTS_SRC_MODEL_MANAGER_H_
+#ifndef ANALYSIS_COMMON_R_BSTS_SRC_MODEL_MANAGER_H_
+#define ANALYSIS_COMMON_R_BSTS_SRC_MODEL_MANAGER_H_
 
 #include "r_interface/boom_r_tools.hpp"
 #include "r_interface/list_io.hpp"
@@ -211,4 +211,4 @@ class ModelManager {
 }  // namespace bsts
 }  // namespace BOOM
 
-#endif  // BSTS_SRC_MODEL_MANAGER_H_
+#endif  // ANALYSIS_COMMON_R_BSTS_SRC_MODEL_MANAGER_H_
