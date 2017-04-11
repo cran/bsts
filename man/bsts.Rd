@@ -20,26 +20,56 @@
 
   If no predictor variables are used, then the model is an ordinary
   state space time series model.
+
+  The model allows for several useful extensions beyond standard
+  Bayesian dynamic linear models.
+
+  \itemize{
+
+    \item{A spike-and-slab prior is used for the (static) regression
+      component of models that include predictor variables.  This is
+      especially useful with large numbers of regressor series.}
+
+    \item{Both the spike-and-slab component (for static regressors) and
+      the Kalman filter (for components of time series state) require
+      observations and state variables to be Gaussian.  The \code{bsts}
+      package allows for non-Gaussian error families in the observation
+      equation (as well as some state components) by using data
+      augmentation to express these families as conditionally
+      Gaussian. }
+
+    \item{As of version 0.7.0, \code{bsts} supports having multiple
+      observations at the same time point.  In this case the basic model
+      is taken to be
+
+      \deqn{y_{t,j} = Z_t^T \alpha_t + \beta^Tx_{t, j} + \epsilon_{t,j}.}{%
+	y[t, j] = Z'alpha[t] + beta'x[t, j] + epsilon[t, j].}
+
+      This is a regression model where all observations with the same
+      time point share a common time series effect.
+    }
+  }
 }
 
 \usage{
 bsts(formula,
      state.specification,
      family = c("gaussian", "logit", "poisson", "student"),
-     save.state.contributions = TRUE,
-     save.prediction.errors = TRUE,
      data,
-     bma.method = c("SSVS", "ODA"),
      prior,
-     oda.options = list(
-         fallback.probability = 0.0,
-         eigenvalue.fudge.factor = 0.01),
      contrasts = NULL,
      na.action = na.pass,
      niter,
      ping = niter / 10,
-     timeout.seconds = Inf,
+     model.options = BstsOptions(),
+     timestamps = NULL,
      seed = NULL,
+### Deprecated arguments
+     save.state.contributions,
+     save.prediction.errors,
+     bma.method,
+     oda.options,
+### End of deprecated arguments
      ...)
 }
 
@@ -66,51 +96,12 @@ bsts(formula,
     Non-Gaussian model families use data augmentation to recover a
     conditionally Gaussian model.}
 
-  \item{save.state.contributions}{Logical.  If \code{TRUE} then a 3-way
-    array named \code{state.contributions} will be stored in the
-    returned object.  The indices correspond to MCMC iteration, state
-    model number, and time.  Setting \code{save.state.contributions} to
-    \code{FALSE} yields a smaller object, but \code{plot} will not be
-    able to plot the the "state", "components", or "residuals" for the
-    fitted model.}
-
-  \item{save.prediction.errors}{Logical.  If \code{TRUE} then a matrix
-    named \code{one.step.prediction.errors} will be saved as part of the
-    model object.  The rows of the matrix represent MCMC iterations, and
-    the columns represent time.  The matrix entries are the
-    one-step-ahead prediction errors from the Kalman filter.  }
-
   \item{data}{An optional data frame, list or environment (or object
     coercible by \code{\link{as.data.frame}} to a data frame) containing the
     variables in the model.  If not found in \code{data}, the variables
     are taken from \code{environment(formula)}, typically the
     environment from which \code{\link{bsts}} is called.}
 
-  \item{bma.method}{If the model contains a regression component, this
-    argument specifies the method to use for Bayesian model averaging.
-    "SSVS" is stochastic search variable selection, which is the classic
-    approach from George and McCulloch (1997).  "ODA" is orthoganal data
-    augmentation, from Ghosh and Clyde (2011).  It adds a set of latent
-    observations that make the X^TX matrix diagonal, vastly simplifying
-    complete data MCMC for model selection.}
-
-  \item{oda.options}{If bma.method == "ODA" then these are some options
-    for fine tuning the ODA algorithm.
-    \itemize{
-
-      \item \code{fallback.probability}: Each MCMC iteration will use
-      SSVS instead of ODA with this probability.  In cases where
-      the latent data have high leverage, ODA mixing can suffer.
-      Mixing in a few SSVS steps can help keep an errant algorithm
-      on track.
-
-      \item \code{eigenvalue.fudge.factor}: The latent X's will be
-      chosen so that the complete data X'X matrix (after scaling) is a
-      constant diagonal matrix equal to the largest eigenvalue of the
-      observed (scaled) X'X times (1 + eigenvalue.fudge.factor).  This
-      should be a small positive number.
-    }
-  }
 
   \item{prior}{If regressors are supplied in the model formula, then
     this is a prior distribution for the regression component of the
@@ -147,19 +138,75 @@ bsts(formula,
     If ping > 0 then the program will print a status message to the
     screen every \code{ping} MCMC iterations.}
 
-  \item{timeout.seconds}{The number of seconds that sampler will be
-    allowed to run.  If the timeout is exceeded the returned object will
-    be truncated to the final draw that took place before the timeout
-    occurred, as if that had been the requested value of \code{niter}.}
+  \item{model.options}{An object (list) returned by
+    \code{\link{BstsOptions}}.  See that function for details.  }
+
+  \item{timestamps}{The timestamp associated with each value of the
+    response.  This argument is primarily useful in cases where the
+    response has missing gaps, or where there are multiple observations
+    per time point.  If the response is a "regular" time series with a
+    single observation per time point then you can leave this argument
+    as \code{NULL}.  In that case, if either the response or the
+    \code{data} argument is a type convertible to \code{\link{zoo}} then
+    timestamps will be inferred.}
 
   \item{seed}{An integer to use as the random seed for the underlying
     C++ code.  If \code{NULL} then the seed will be set using the
     clock.}
 
+  \item{save.state.contributions}{
+    \bold{ ***DEPRECATED*** Please use BstsOptions instead.}
+    Logical.  If \code{TRUE} then a 3-way
+    array named \code{state.contributions} will be stored in the
+    returned object.  The indices correspond to MCMC iteration, state
+    model number, and time.  Setting \code{save.state.contributions} to
+    \code{FALSE} yields a smaller object, but \code{plot} will not be
+    able to plot the the "state", "components", or "residuals" for the
+    fitted model.}
+
+  \item{save.prediction.errors}{
+    \bold{ ***DEPRECATED*** Please use BstsOptions instead.}
+    Logical.  If \code{TRUE} then a matrix
+    named \code{one.step.prediction.errors} will be saved as part of the
+    model object.  The rows of the matrix represent MCMC iterations, and
+    the columns represent time.  The matrix entries are the
+    one-step-ahead prediction errors from the Kalman filter.  }
+
+  \item{bma.method}{
+    \bold{ ***DEPRECATED*** Please use BstsOptions instead.}
+    If the model contains a regression component, this
+    argument specifies the method to use for Bayesian model averaging.
+    "SSVS" is stochastic search variable selection, which is the classic
+    approach from George and McCulloch (1997).  "ODA" is orthoganal data
+    augmentation, from Ghosh and Clyde (2011).  It adds a set of latent
+    observations that make the X^TX matrix diagonal, vastly simplifying
+    complete data MCMC for model selection.}
+
+  \item{oda.options}{
+    \bold{ ***DEPRECATED*** Please use BstsOptions instead.}
+    If bma.method == "ODA" then these are some options
+    for fine tuning the ODA algorithm.
+    \itemize{
+
+      \item \code{fallback.probability}: Each MCMC iteration will use
+      SSVS instead of ODA with this probability.  In cases where
+      the latent data have high leverage, ODA mixing can suffer.
+      Mixing in a few SSVS steps can help keep an errant algorithm
+      on track.
+
+      \item \code{eigenvalue.fudge.factor}: The latent X's will be
+      chosen so that the complete data X'X matrix (after scaling) is a
+      constant diagonal matrix equal to the largest eigenvalue of the
+      observed (scaled) X'X times (1 + eigenvalue.fudge.factor).  This
+      should be a small positive number.
+    }
+  }
+
+
+
   \item{...}{ Extra arguments to be passed to
-    \code{\link[BoomSpikeSlab]{SpikeSlabPrior}} (see the entry for the \code{prior}
-    argument, above).}
-}
+    \code{\link[BoomSpikeSlab]{SpikeSlabPrior}} (see the entry for the
+    \code{prior} argument, above).}  }
 
 \value{
   An object of class \code{\link{bsts}} which is a list with the
@@ -216,7 +263,8 @@ bsts(formula,
   339--374.
 
   Ghosh and Clyde (2011)
-  "Rao-Blackwellization for Bayesian variable selection and model averaging in linear and binary regression: a novel data augmentation approach",
+  "Rao-Blackwellization for Bayesian variable selection and model averaging
+  in linear and binary regression: a novel data augmentation approach",
   JASA pp 1041 --1052.
 
 }
@@ -305,6 +353,37 @@ bsts(formula,
   plot(model, "coefficients")
   plot(model, "predictors")
 }
+}
+
+\dontrun{
+  ## Example 7:  Regressors with multiple time stamps.
+  number.of.time.points <- 50
+  sample.size.per.time.point <- 10
+  total.sample.size <- number.of.time.points * sample.size.per.time.point
+  sigma.level <- .1
+  sigma.obs <- 1
+
+  ## Simulate some fake data with a local level state component.
+  trend <- cumsum(rnorm(number.of.time.points, 0, sigma.level))
+  predictors <- matrix(rnorm(total.sample.size * 2), ncol = 2)
+  colnames(predictors) <- c("X1", "X2")
+  coefficients <- c(-10, 10)
+  regression <- as.numeric(predictors %*% coefficients)
+  y.hat <- rep(trend, sample.size.per.time.point) + regression
+  y <- rnorm(length(y.hat), y.hat, sigma.obs)
+
+  ## Create some time stamps, with multiple observations per time stamp.
+  first <- as.POSIXct("2013-03-24")
+  dates <- seq(from = first, length = number.of.time.points, by = "month")
+  timestamps <- rep(dates, sample.size.per.time.point)
+
+  ## Run the model with a local level trend, and an unnecessary seasonal component.
+  ss <- AddLocalLevel(list(), y)
+  ss <- AddSeasonal(ss, y, nseasons = 7)
+  model <- bsts(y ~ predictors, ss, niter = 250, timestamps = timestamps,
+                seed = 8675309)
+  plot(model)
+  plot(model, "components")
 }
 
 }

@@ -1,7 +1,7 @@
 #include <ctime>
 
-#include "utils.h"
 #include "model_manager.h"
+#include "utils.h"
 
 #include "r_interface/boom_r_tools.hpp"
 #include "r_interface/create_state_model.hpp"
@@ -10,12 +10,11 @@
 #include "r_interface/print_R_timestamp.hpp"
 #include "r_interface/seed_rng_from_R.hpp"
 
-#include "cpputil/report_error.hpp"
 #include "Models/StateSpace/StateSpaceModelBase.hpp"
+#include "cpputil/report_error.hpp"
 
 extern "C" {
 using BOOM::Vector;
-using BOOM::Matrix;
 using BOOM::Ptr;
 using BOOM::bsts::ModelManager;
 using BOOM::RCheckInterrupt;

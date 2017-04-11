@@ -2,18 +2,18 @@
 
 #include "model_manager.h"
 #include "state_space_gaussian_model_manager.h"
-#include "state_space_regression_model_manager.h"
 #include "state_space_logit_model_manager.h"
 #include "state_space_poisson_model_manager.h"
+#include "state_space_regression_model_manager.h"
 #include "state_space_student_model_manager.h"
 #include "utils.h"
 
 #include "r_interface/boom_r_tools.hpp"
-#include "r_interface/list_io.hpp"
 #include "r_interface/create_state_model.hpp"
+#include "r_interface/list_io.hpp"
 
-#include "Models/StateSpace/StateModels/DynamicRegressionStateModel.hpp"
 #include "Models/StateSpace/Filters/KalmanTools.hpp"
+#include "Models/StateSpace/StateModels/DynamicRegressionStateModel.hpp"
 
 #include "cpputil/report_error.hpp"
 #include "distributions.hpp"
@@ -21,7 +21,11 @@
 namespace BOOM {
 namespace bsts {
 
-ModelManager * ModelManager::Create(SEXP r_bsts_object) {
+ModelManager::ModelManager()
+    : timestamps_are_trivial_(true),
+      number_of_time_points_(-1) {}
+
+ModelManager * ModelManager::Create(SEXP r_bsts_object) {  // NOLINT
   std::string family = ToString(getListElement(
       r_bsts_object, "family"));
   bool regression = !Rf_isNull(getListElement(
@@ -33,7 +37,7 @@ ModelManager * ModelManager::Create(SEXP r_bsts_object) {
   return ModelManager::Create(family, xdim);
 }
 
-ModelManager * ModelManager::Create(const std::string &family_name,
+ModelManager * ModelManager::Create(const std::string &family_name,  // NOLINT
                                     int xdim) {
   ModelManager *ans = nullptr;
   if (family_name == "gaussian") {
@@ -70,7 +74,7 @@ ModelManager * ModelManager::Create(const std::string &family_name,
   return ans;
 }
 
-StateSpaceModelBase * ModelManager::CreateModel(
+StateSpaceModelBase * ModelManager::CreateModel(  // NOLINT
     SEXP r_data_list,
     SEXP r_state_specification,
     SEXP r_prior,
@@ -94,11 +98,11 @@ StateSpaceModelBase * ModelManager::CreateModel(
         new NativeMatrixListElement(
             new GeneralStateContributionCallback(model),
             "state.contributions",
-            NULL));
+            nullptr));
   }
 
   if (save_prediction_errors) {
-    // The final NULL argument is because we will not be streaming
+    // The final nullptr argument is because we will not be streaming
     // prediction errors in future calculations.  They are for
     // reporting only.  As usual, the rows of the matrix correspond to
     // MCMC iterations, so the columns represent time.
@@ -106,7 +110,7 @@ StateSpaceModelBase * ModelManager::CreateModel(
         new BOOM::NativeVectorListElement(
             new PredictionErrorCallback(model),
             "one.step.prediction.errors",
-            NULL));
+            nullptr));
   }
   return model;
 }
@@ -231,6 +235,18 @@ void ModelManager::UnpackDynamicRegressionForecastData(
       state_model.dcast<DynamicRegressionStateModel>()->add_forecast_data(
           predictors);
     }
+  }
+}
+
+void ModelManager::UnpackTimestampInfo(SEXP r_data_list) {
+  SEXP r_timestamp_info = getListElement(r_data_list, "timestamp.info");
+  timestamps_are_trivial_ = Rf_asLogical(getListElement(
+      r_timestamp_info, "timestamps.are.trivial"));
+  number_of_time_points_ = Rf_asInteger(getListElement(
+      r_timestamp_info, "number.of.time.points"));
+  if (!timestamps_are_trivial_) {
+    timestamp_mapping_ = ToIntVector(getListElement(
+        r_timestamp_info, "timestamp.mapping"));
   }
 }
 

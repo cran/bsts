@@ -1,35 +1,32 @@
 ## This file implements the main bsts function and most of its methods
 ## (plot, print, summary).
 ##
-## Two use cases:
+## Two common use cases:
 ## bsts(y ~ formula, data = my.data, state.specification = ss)
 ## bsts(y, state.specification = ss)
-
+##
 ## Then we can plot.bsts, predict.bsts, etc.  Of course, they will
 ## need different argument lists depending on the presence/absence of
 ## predictors.
 
-###----------------------------------------------------------------------
-### TODO(stevescott): consider removing save.state.contributions and
-### save.prediction.errors.
-### TODO(stevescott):  consider consolidating options.
 bsts <- function(formula,
                  state.specification,
                  family = c("gaussian", "logit", "poisson", "student"),
-                 save.state.contributions = TRUE,
-                 save.prediction.errors = TRUE,
                  data,
-                 bma.method = c("SSVS", "ODA"),
                  prior = NULL,
-                 oda.options = list(
-                     fallback.probability = 0.0,
-                     eigenvalue.fudge.factor = 0.01),
                  contrasts = NULL,
                  na.action = na.pass,
                  niter,
                  ping = niter / 10,
-                 timeout.seconds = Inf,
+                 model.options = BstsOptions(),
+                 timestamps = NULL,
                  seed = NULL,
+### Deprecated arguments
+                 save.state.contributions,
+                 save.prediction.errors,
+                 bma.method,
+                 oda.options,
+### End of deprecated arguments
                  ...) {
   ## Uses MCMC to sample from the posterior distribution of a Bayesian
   ## structural time series model.  This function can be used either
@@ -63,32 +60,11 @@ bsts <- function(formula,
   ##     Gaussian.  However this requirement can be relaxed to
   ##     mixtures of Gaussians, which opens the door to several other
   ##     error distributions such as binomial (logit), Poisson, and T.
-  ##   save.state.contributions: Logical.  If TRUE then a 3-way array
-  ##     named 'state.contributions' will be stored in the returned
-  ##     object.  The indices correspond to MCMC iteration, state
-  ##     model number, and time.  Setting 'save.state.contributions'
-  ##     to 'FALSE' yields a smaller object, but plot() will not be
-  ##     able to plot the the "state", "components", or "residuals"
-  ##     for the fitted model.
-  ##   save.prediction.errors: Logical.  If TRUE then a matrix named
-  ##     'one.step.prediction.errors' will be saved as part of the
-  ##     model object.  The rows of the matrix represent MCMC
-  ##     iterations, and the columns represent time.  The matrix
-  ##     entries are the one-step-ahead prediction errors from the
-  ##     Kalman filter.
   ##   data: an optional data frame, list or environment (or object
   ##     coercible by ‘as.data.frame’ to a data frame) containing the
   ##     variables in the model.  If not found in ‘data’, the
   ##     variables are taken from ‘environment(formula)’, typically
   ##     the environment from which ‘bsts’ is called.
-  ##   bma.method: If the model contains a regression component, this
-  ##     argument specifies the method to use for Bayesian model
-  ##     averaging.  "SSVS" is stochastic search variable selection,
-  ##     which is the classic approach from George and McCulloch
-  ##     (1997).  "ODA" is orthoganal data augmentation, from Ghosh
-  ##     and Clyde (2011).  It adds a set of latent observations that
-  ##     make the X^TX matrix diagonal, simplifying complete data MCMC
-  ##     for model selection.
   ##   prior: If a regression component is present then this a prior
   ##     distribution for the regression component of the model, as
   ##     created by SpikeSlabPrior.  The prior for the time series
@@ -98,19 +74,6 @@ bsts <- function(formula,
   ##     deviation, created by SdPrior.  In either case the prior is
   ##     optional.  A weak default prior will be used if no prior is
   ##     specified explicitly.
-  ##   oda.options: A list (which is ignored unless bma.method ==
-  ##     "ODA") with the following elements:
-  ##     * fallback.probability: Each MCMC iteration will use SSVS
-  ##         instead of ODA with this probability.  In cases where the
-  ##         latent data have high leverage, ODA mixing can suffer.
-  ##         Mixing in a few SSVS steps can help keep an errant
-  ##         algorithm on track.
-  ##     * eigenvalue.fudge.factor: The latent X's will be chosen so
-  ##         that the complete data X'X matrix (after scaling) is a
-  ##         constant diagonal matrix equal to the largest eigenvalue
-  ##         of the observed (scaled) X'X times (1 +
-  ##         eigenvalue.fudge.factor).  This should be a small
-  ##         positive number.
   ##   contrasts: an optional list containing the names of contrast
   ##     functions to use when converting factors numeric variables in
   ##     a regression formula.  This argument works exactly as it does
@@ -130,55 +93,46 @@ bsts <- function(formula,
   ##     draws
   ##   ping: A scalar.  If ping > 0 then the program will print a
   ##     status message to the screen every 'ping' MCMC iterations.
-  ##   timeout.seconds: The number of seconds that sampler will be
-  ##     allowed to run.  If the timeout is exceeded the returned
-  ##     object will be truncated to the final draw that took place
-  ##     before the timeout occurred, as if that had been the
-  ##     requested value of 'niter'.  A timeout is reported through a
-  ##     warning.
+  ##   model.options: An object (list) returned by BstsOptions().  See that
+  ##     function for details.
+  ##   timestamps: The timestamp associated with each value of the response.
+  ##     This argument is primarily useful in cases where the response has
+  ##     missing gaps or duplicate values.  If the response is a regular time
+  ##     series with a single observation per time point, then you can leave the
+  ##     'timestamps' argument as NULL and the timestamps will be taken from the
+  ##     'response' or 'data' objects (if they are 'zoo' objects).
   ##   seed: An integer to use as the C++ random seed.  If NULL then
   ##     the C++ seed will be set using the clock.
   ##   ...:  Extra arguments to be passed to SpikeSlabPrior.
   ## Returns:
-  ##   An object of class 'bsts', which is a list with the following components
-  ##   coefficients: a 'niter' by 'ncol(X)' matrix of MCMC draws of
-  ##     the regression coefficients, where 'X' is the matrix of predictors
-  ##     implied by 'formula'.  This is only present if a model
-  ##     formula was supplied
-  ##   sigma.obs: a vector of length 'niter' containing MCMC draws of the
-  ##     residual standard deviation.
+  ##   An object of class 'bsts', which is a list containing the MCMC draws of
+  ##   model parameters, state contributions, etc.
   ##
-  ##   The returned object will also contain named elements holding
-  ##   the MCMC draws of model parameters belonging to the state
-  ##   models.  The names of each component are supplied by the
-  ##   entries in state.specification.  If a model parameter is a
-  ##   scalar, then the list element is a vector with 'niter'
-  ##   elements.  If the parameter is a vector then the list element
-  ##   is a matrix with 'niter' rows, and if the parameter is a matrix
-  ##   then the list element is a 3-way array with first dimension
-  ##   'niter'.
+  ##   The returned object will also contain named elements holding the MCMC
+  ##   draws of model parameters belonging to the state models.  The names of
+  ##   each component are supplied by the entries in state.specification.  If a
+  ##   model parameter is a scalar, then the list element is a vector with
+  ##   'niter' elements.  If the parameter is a vector then the list element is
+  ##   a matrix with 'niter' rows, and if the parameter is a matrix then the
+  ##   list element is a 3-way array with first dimension 'niter'.
   ##
-  ##   Finally, if a model formula was supplied, then the returned
-  ##   object will contain the information necessary for the predict
-  ##   method to build the predictor matrix when a new prediction is
-  ##   made.
+  ##   Finally, if a model formula was supplied, then the returned object will
+  ##   contain the information necessary for the predict method to build the
+  ##   predictor matrix when a new prediction is made.
   ##
   ## Details:
-  ##   If the model family is logit, then there are two ways one can
-  ##   format the response variable.  If the response is 0/1,
-  ##   TRUE/FALSE, or 1/-1, then the response variable can be passed
-  ##   as with any other model family.  If the response is a set of
-  ##   counts out of a specified number of trials then it can be
-  ##   passed as a two-column matrix, where the first column contains
-  ##   the counts of successes and the second contains the count of
-  ##   failures.
+  ##   If the model family is logit, then there are two ways one can format the
+  ##   response variable.  If the response is 0/1, TRUE/FALSE, or 1/-1, then the
+  ##   response variable can be passed as a vector.  If the response is a set of
+  ##   counts out of a specified number of trials then it can be passed as a
+  ##   two-column matrix, where the first column contains the counts of
+  ##   successes and the second contains the count of failures.
   ##
-  ##   Likewise, if the model family is Poisson, the response can be
-  ##   passed as a single vector of counts, under the assumption that
-  ##   each observation has unit exposure.  If the exposures differ
-  ##   across observations, then the resopnse can be a two column
-  ##   matrix, with the first column containing the event counts and
-  ##   the second containing exposure times.
+  ##   Likewise, if the model family is Poisson, the response can be passed as a
+  ##   single vector of counts, under the assumption that each observation has
+  ##   unit exposure.  If the exposures differ across observations, then the
+  ##   resopnse can be a two column matrix, with the first column containing the
+  ##   event counts and the second containing exposure times.
 
   ## Do some error checking before we get started.
   check.nonnegative.scalar(niter)
@@ -188,10 +142,44 @@ bsts <- function(formula,
     seed <- as.integer(seed)
   }
 
-  bma.method <- match.arg(bma.method)
   family <- match.arg(family)
-  has.regression <- !is.numeric(formula)
+  ##----------------------------------------------------------------------
+  ## Handle deprecated arguments.  This section and the arguments it handles
+  ## will be removed as of the next release of bsts.
+  ## ----------------------------------------------------------------------
+  if (!missing(save.state.contributions)) {
+    warning("Please specify 'save.state.contributions' in a call to ",
+            "BstsOptions.  This argument will be removed in the next ",
+            "version of bsts.")
+    model.options$save.state.contributions <- save.state.contributions
+  }
 
+  if (!missing(save.prediction.errors)) {
+    warning("Please specify 'save.prediction.errors' in a call to ",
+            "BstsOptions.  This argument will be removed in the next ",
+            "version of bsts.")
+    model.options$save.prediction.errors <- save.prediction.errors
+  }
+
+  if (!missing(bma.method)) {
+    warning("Please specify 'bma.method' in a call to ",
+            "BstsOptions.  This argument will be removed in the next ",
+            "version of bsts.")
+    bma.method <- match.arg(bma.method, c("SSVS", "ODA"))
+    model.options$bma.method <- bma.method
+  }
+
+  if (!missing(oda.options)) {
+    warning("Please specify 'oda.options' in a call to ",
+            "BstsOptions.  This argument will be removed in the next ",
+            "version of bsts.")
+    model.options$oda.options <- oda.options
+  }
+  ##-------------------------------------------------------------------------
+  ## End of deprecated parameter section.
+  ##-------------------------------------------------------------------------
+
+  has.regression <- !is.numeric(formula)
   if (has.regression) {
     ##----------------------------------------------------------------------
     ## Here begins some black magic to extract the responses and the
@@ -232,6 +220,7 @@ bsts <- function(formula,
 
     ## End of black magic to get predictors and response.
   } else {
+    ## No static regression formula.
     response <- formula
     stopifnot(is.numeric(response))
     predictors <- NULL
@@ -239,13 +228,15 @@ bsts <- function(formula,
 
   ## Grab the timestamps for the response before passing it to
   ## .FormatBstsDataAndOptions so we can use them later.
-  if (is.zoo(response)) {
-    timestamps <- index(response)
-  } else if (!missing(data) && is.zoo(data)) {
-    timestamps <- index(data)
-  } else timestamps <- NULL
+  if (missing(data)) {
+    ## This should be handled in the argument list by setting a default argument
+    ## data = NULL, but doing that messes up the "regression black magic"
+    ## section above.
+    data <- NULL
+  }
+  timestamp.info <- .ComputeTimestampInfo(response, data, timestamps)
   formatted.data.and.options <- .FormatBstsDataAndOptions(
-      family, response, predictors, bma.method, oda.options)
+      family, response, predictors, model.options, timestamp.info)
   data.list <- formatted.data.and.options$data.list
   model.options <- formatted.data.and.options$model.options
 
@@ -256,7 +247,7 @@ bsts <- function(formula,
     prior <- .SetDefaultPrior(
         data.list,
         family = family,
-        bma.method = bma.method,
+        bma.method = model.options$bma.method,
         ...)
   }
   ## Check that the prior is appropriate for the data, options and
@@ -269,11 +260,11 @@ bsts <- function(formula,
     all.zero <- apply(predictors, 2, function(z) all(z == 0))
     prior$prior.inclusion.probabilities[all.zero] <- 0
 
-    if (bma.method == "ODA") {
+    if (model.options$bma.method == "ODA") {
       stopifnot(inherits(prior, "IndependentSpikeSlabPrior"))
-      stopifnot(is.list(oda.options))
-      check.scalar.probability(oda.options$fallback.probability)
-      check.positive.scalar(oda.options$eigenvalue.fudge.factor)
+      stopifnot(is.list(model.options$oda.options))
+      check.scalar.probability(model.options$oda.options$fallback.probability)
+      check.positive.scalar(model.options$oda.options$eigenvalue.fudge.factor)
     }
     if (is.null(prior$max.flips)) {
       prior$max.flips <- -1
@@ -286,25 +277,30 @@ bsts <- function(formula,
                prior,
                model.options,
                family,
-               save.state.contributions,
-               save.prediction.errors,
+               model.options$save.state.contributions,
+               model.options$save.prediction.errors,
                niter,
                ping,
-               timeout.seconds,
+               model.options$timeout.seconds,
                seed,
                PACKAGE = "bsts")
   ans$has.regression <- has.regression
   ans$state.specification <- state.specification
+  ans$prior <- prior
+  ans$timestamp.info <- timestamp.info
+  model.options$timestamp.info <- NULL
+  ans$model.options <- model.options
   ans$family <- family
   ans$niter <- niter
   if (!is.null(ans$ngood)) {
     ans <- .Truncate(ans)
   }
-  ans$original.series <- .ComputeOriginalSeries(timestamps, data.list$response)
+  ans$original.series <- .ComputeOriginalSeries(timestamp.info,
+                                                data.list$response)
 
   ##----------------------------------------------------------------------
   ## Add names to state.contributions.
-  if (save.state.contributions) {
+  if (model.options$save.state.contributions) {
     ## Store the names of each state model in the appropriate dimname
     ## for state.contributions.
     number.of.state.components <- length(state.specification)
@@ -346,6 +342,80 @@ bsts <- function(formula,
   }
 
   class(ans) <- "bsts"
+  return(ans)
+}
+
+###======================================================================
+BstsOptions <- function(save.state.contributions = TRUE,
+                        save.prediction.errors = TRUE,
+                        bma.method = c("SSVS", "ODA"),
+                        oda.options = list(
+                            fallback.probability = 0.0,
+                            eigenvalue.fudge.factor = 0.01),
+                        timeout.seconds = Inf) {
+  ## A collection of somewhat more obscure options that can be used to control a
+  ## bsts model.
+  ##
+  ## Args:
+  ##   save.state.contributions: Logical.  If TRUE then a 3-way array
+  ##     named 'state.contributions' will be stored in the returned
+  ##     object.  The indices correspond to MCMC iteration, state
+  ##     model number, and time.  Setting 'save.state.contributions'
+  ##     to 'FALSE' yields a smaller object, but plot() will not be
+  ##     able to plot the the "state", "components", or "residuals"
+  ##     for the fitted model.
+  ##   save.prediction.errors: Logical.  If TRUE then a matrix named
+  ##     'one.step.prediction.errors' will be saved as part of the
+  ##     model object.  The rows of the matrix represent MCMC
+  ##     iterations, and the columns represent time.  The matrix
+  ##     entries are the one-step-ahead prediction errors from the
+  ##     Kalman filter.
+  ##   bma.method: If the model contains a regression component, this
+  ##     argument specifies the method to use for Bayesian model
+  ##     averaging.  "SSVS" is stochastic search variable selection,
+  ##     which is the classic approach from George and McCulloch
+  ##     (1997).  "ODA" is orthoganal data augmentation, from Ghosh
+  ##     and Clyde (2011).  It adds a set of latent observations that
+  ##     make the X^TX matrix diagonal, simplifying complete data MCMC
+  ##     for model selection.
+  ##   oda.options: A list (which is ignored unless bma.method ==
+  ##     "ODA") with the following elements:
+  ##     * fallback.probability: Each MCMC iteration will use SSVS
+  ##         instead of ODA with this probability.  In cases where the
+  ##         latent data have high leverage, ODA mixing can suffer.
+  ##         Mixing in a few SSVS steps can help keep an errant
+  ##         algorithm on track.
+  ##     * eigenvalue.fudge.factor: The latent X's will be chosen so
+  ##         that the complete data X'X matrix (after scaling) is a
+  ##         constant diagonal matrix equal to the largest eigenvalue
+  ##         of the observed (scaled) X'X times (1 +
+  ##         eigenvalue.fudge.factor).  This should be a small
+  ##         positive number.
+  ##   timeout.seconds: The number of seconds that sampler will be
+  ##     allowed to run.  If the timeout is exceeded the returned
+  ##     object will be truncated to the final draw that took place
+  ##     before the timeout occurred, as if that had been the
+  ##     requested value of 'niter'.  A timeout is reported through a
+  ##     warning.
+  bma.method <- match.arg(bma.method)
+  stopifnot(is.logical(save.state.contributions),
+            length(save.state.contributions) == 1)
+  stopifnot(is.logical(save.prediction.errors),
+            length(save.prediction.errors) == 1)
+  stopifnot(is.list(oda.options))
+  stopifnot(is.numeric(oda.options$fallback.probability),
+            length(oda.options$fallback.probability) == 1)
+  stopifnot(is.numeric(oda.options$eigenvalue.fudge.factor),
+            length(oda.options$eigenvalue.fudge.factor) == 1)
+  stopifnot(is.numeric(timeout.seconds),
+            length(timeout.seconds) == 1,
+            timeout.seconds >= 0)
+  ans <- list(save.state.contributions = save.state.contributions,
+              save.prediction.errors = save.prediction.errors,
+              bma.method = bma.method,
+              oda.options = oda.options,
+              timeout.seconds = timeout.seconds)
+  class(ans) <- "BstsOptions"
   return(ans)
 }
 
@@ -504,28 +574,24 @@ bsts <- function(formula,
   return(bsts.object)
 }
 
-.ComputeOriginalSeries <- function(timestamps, response) {
-  ## This function computes the original series passed to the bsts
-  ## function.  This is harder than it sounds, because the response
-  ## has been massaged with as.numeric and potentially been converted
-  ## from a two-column matrix to a vector.
+.ComputeOriginalSeries <- function(timestamp.info, response) {
+  ## Computes the original series passed to the bsts function.  This is harder
+  ## than it sounds, because the response has been massaged with as.numeric and
+  ## potentially been converted from a two-column matrix to a vector.
   ##
-  ## All the plotting functions depend on 'response' being a zoo
-  ## object, so they can call index() on it to get the dates.  Note
-  ## that a ts or plain numeric object can be converted to zoo using
-  ## as.zoo.
-  ##
-  ## Ensuring that response retains the zoo-ness of the input series
-  ## is a pain in the butt.
+  ## Ensuring that response retains the zoo-ness of the input series is a pain
+  ## in the butt.
   ##
   ## Args:
-  ##   timestamps: Either a vector of timestamps (e.g. Date or POSIXt
-  ##     objects), or NULL if timestamps cannot be obtained.
-  ##   response:  A numeric vector
-  if (!is.null(timestamps) && (length(timestamps) == length(response))) {
-    response <- zoo(response, timestamps)
-  } else {
-    response <- as.zoo(response)
+  ##   timestamp.info:  The
+  ##   response: The response used to fit the bsts model, which may be a numeric
+  ##     vector or a two-column matrix.
+
+  ## Need to wrap timestamp.info in a "bsts.object" to match the signiture
+  ## expeceed by HasDuplicateTimestamps.
+  fake.bsts.object <- list(timestamp.info = timestamp.info)
+  if (!HasDuplicateTimestamps(fake.bsts.object)) {
+    response <- zoo(response, timestamp.info$timestamps)
   }
   return(response)
 }

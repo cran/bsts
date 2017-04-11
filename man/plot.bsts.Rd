@@ -38,7 +38,10 @@
                         ...)
   PlotBstsState(bsts.object, burn = SuggestBurn(.1, bsts.object),
                        time, show.actuals = TRUE,
-                       style = c("dynamic", "boxplot"), ...)
+                       style = c("dynamic", "boxplot"),
+                       scale = c("linear", "mean"),
+                       ylim = NULL,
+                       ...)
   PlotBstsResiduals(bsts.object, burn = SuggestBurn(.1, bsts.object),
                        time, style = c("dynamic", "boxplot"), ...)
   PlotBstsPredictionErrors(bsts.object, burn = SuggestBurn(.1, bsts.object),
@@ -72,16 +75,22 @@
   \item{show.actuals}{Logical.  If \code{TRUE} then actual values from
     the fitted series will be shown on the plot.}
 
+  \item{scale}{The scale on which to plot the state.  If the error
+    family is "logit" or "poisson" then the state can either be plotted
+    on the scale of the linear predictor (e.g. trend + seasonal +
+    regression) or the linear predictor can be passed through the link
+    function so as to plot the distribution of the conditional mean.}
+
   \item{style}{The desired plot style.  Partial matching is allowed, so
     "dyn" would match "dynamic", for example.}
 
   \item{layout}{For controlling the layout of functions that generate
     mutiple plots.}
 
-  \item{inclusion.threshold}{
-    A inclusion probability that individual
+  \item{inclusion.threshold}{An inclusion probability that individual
     coefficients must exceed in order to be displayed when \code{what ==
-      "coefficients"}.  See the help file for \code{\link[BoomSpikeSlab]{plot.lm.spike}.}}
+    "coefficients"}.  See the help file for
+    \code{\link[BoomSpikeSlab]{plot.lm.spike}.}}
 
   \item{number.of.variables}{If non-\code{NULL} this specifies the
     number of coefficients to plot, taking precedence over
@@ -149,6 +158,8 @@
 \value{
   These functions are called for their side effect, which is to produce
   a plot on the current graphics device.
+
+  \code{PlotBstsState} invisibly returns the state object being plotted.
 }
 
 \examples{

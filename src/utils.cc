@@ -7,7 +7,7 @@ namespace bsts {
 //======================================================================
 // Initialize the model to be empty, except for variables that are
 // known to be present with probability 1.
-void DropUnforcedCoefficients(Ptr<GlmModel> glm,
+void DropUnforcedCoefficients(const Ptr<GlmModel> &glm,
                               const BOOM::Vector &prior_inclusion_probs) {
   glm->coef().drop_all();
   for (int i = 0; i < prior_inclusion_probs.size(); ++i) {

@@ -18,7 +18,7 @@ PlotHolidays <- function(model, ylim = NULL, same.scale = TRUE, ...) {
 
   holiday.list <- list()
 
-  times <- index(model$original.series)
+  times <- model$timestamp.info$regular.timestamps
   component.names <- dimnames(model$state.contributions)[[2]]
 
   for (i in 1:number.of.components) {

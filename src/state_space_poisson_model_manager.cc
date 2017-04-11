@@ -5,11 +5,11 @@
 
 #include "cpputil/math_utils.hpp"
 
-#include "Models/StateSpace/PosteriorSamplers/StateSpacePoissonPosteriorSampler.hpp"
-#include "Models/Glm/PosteriorSamplers/PoissonRegressionSpikeSlabSampler.hpp"
 #include "Models/Glm/PosteriorSamplers/PoissonDataImputer.hpp"
-#include "Models/MvnModel.hpp"
+#include "Models/Glm/PosteriorSamplers/PoissonRegressionSpikeSlabSampler.hpp"
 #include "Models/Glm/VariableSelectionPrior.hpp"
+#include "Models/MvnModel.hpp"
+#include "Models/StateSpace/PosteriorSamplers/StateSpacePoissonPosteriorSampler.hpp"
 
 namespace BOOM {
 namespace bsts {
@@ -50,12 +50,37 @@ StateSpacePoissonModel * SSPMM::CreateObservationModel(
     std::vector<bool> response_is_observed(ToVectorBool(getListElement(
         r_data_list, "response.is.observed")));
     zero_missing_values(&counts, &exposure, response_is_observed);
-    model_.reset(
-        new StateSpacePoissonModel(
-            counts,
-            exposure,
-            predictors,
-            response_is_observed));
+
+    UnpackTimestampInfo(r_data_list);
+    if (TimestampsAreTrivial()) {
+      model_.reset(
+          new StateSpacePoissonModel(
+              counts,
+              exposure,
+              predictors,
+              response_is_observed));
+    } else {
+      model_.reset(new StateSpacePoissonModel(predictors.ncol()));
+      std::vector<Ptr<StateSpace::AugmentedPoissonRegressionData>> data;
+      for (int i = 0; i < NumberOfTimePoints(); ++i) {
+        data.push_back(new StateSpace::AugmentedPoissonRegressionData);
+      }
+      for (int i = 0; i < counts.size(); ++i) {
+        NEW(PoissonRegressionData, data_point)(counts[i],
+                                               predictors.row(i),
+                                               exposure[i]);
+        if (!response_is_observed[i]) {
+          data_point->set_missing_status(Data::completely_missing);
+        }
+        data[TimestampMapping(i)]->add_data(data_point);
+      }
+      for (int i = 0; i < NumberOfTimePoints(); ++i) {
+        if (data[i]->sample_size() == 0) {
+          data[i]->set_missing_status(Data::completely_missing);
+        }
+        model_->add_data(data[i]);
+      }
+    }
     // With the Gaussian models we have two separate classes for the
     // regression and non-regression cases.  For non-Gaussian models
     // we have a single class with a regression bit that can be turned

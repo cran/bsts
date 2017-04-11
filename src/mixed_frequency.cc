@@ -5,19 +5,19 @@
 
 #include "r_interface/boom_r_tools.hpp"
 #include "r_interface/create_state_model.hpp"
-#include "r_interface/list_io.hpp"
-#include "r_interface/prior_specification.hpp"
-#include "r_interface/print_R_timestamp.hpp"
-#include "r_interface/seed_rng_from_R.hpp"
 #include "r_interface/handle_exception.hpp"
+#include "r_interface/list_io.hpp"
+#include "r_interface/print_R_timestamp.hpp"
+#include "r_interface/prior_specification.hpp"
+#include "r_interface/seed_rng_from_R.hpp"
 
 #include "Models/Glm/PosteriorSamplers/BregVsSampler.hpp"
 #include "Models/Glm/RegressionModel.hpp"
 
 #include "Models/StateSpace/AggregatedStateSpaceRegression.hpp"
-#include "Models/StateSpace/StateSpaceModel.hpp"
 #include "Models/StateSpace/PosteriorSamplers/AggregatedStateSpacePosteriorSampler.hpp"
 #include "Models/StateSpace/PosteriorSamplers/StateSpacePosteriorSampler.hpp"
+#include "Models/StateSpace/StateSpaceModel.hpp"
 
 #include "R_ext/Arith.h"  // for ISNA/R_IsNA
 
@@ -39,7 +39,6 @@ using BOOM::RListIoManager;
 using BOOM::StandardDeviationListElement;
 using BOOM::ToBoomVector;
 using BOOM::ToBoomMatrix;
-using BOOM::VectorListElement;
 using BOOM::GlmCoefsListElement;
 
 using BOOM::RCheckInterrupt;
@@ -55,9 +54,9 @@ class StateContributionCallback : public BOOM::MatrixIoCallback {
  public:
   explicit StateContributionCallback(BOOM::StateSpaceModelBase *model)
       : model_(model) {}
-  virtual int nrow() const {return model_->nstate();}
-  virtual int ncol() const {return model_->time_dimension();}
-  virtual BOOM::Mat get_matrix()const {
+  int nrow() const override { return model_->nstate(); }
+  int ncol() const override { return model_->time_dimension(); }
+  BOOM::Mat get_matrix() const override {
     BOOM::Mat ans(nrow(), ncol());
     for (int state = 0; state < model_->nstate(); ++state) {
       ans.row(state) = model_->state_contribution(state);
@@ -75,11 +74,9 @@ class StateRowCallback : public BOOM::VectorIoCallback {
                    bool from_front)
       : model_(model), row_number_(row_number), from_front_(from_front) {}
 
-  virtual int dim() const {
-    return model_->time_dimension();
-  }
+  int dim() const override { return model_->time_dimension(); }
 
-  virtual Vector get_vector() const {
+  Vector get_vector() const override {
     if (from_front_) return model_->state().row(row_number_);
     // otherwise, row number counts from back
     int last_row = model_->state().nrow() - 1;
@@ -104,8 +101,7 @@ class StateRowCallback : public BOOM::VectorIoCallback {
 //     sampled by the MCMC.  Potential elements of the list include
 //     'state', 'beta', and 'sigma.obs'.
 void AddRegressionPriorAndSetSampler(
-    Ptr<AggregatedStateSpaceRegression> model,
-    SEXP r_regression_prior,
+    const Ptr<AggregatedStateSpaceRegression> &model, SEXP r_regression_prior,
     SEXP r_truth) {
   BOOM::RInterface::RegressionConjugateSpikeSlabPrior prior(
       r_regression_prior, model->regression_model()->Sigsq_prm());
@@ -179,14 +175,11 @@ void AddRegressionPriorAndSetSampler(
 // Returns:
 //   An RListIoManager containing information needed to allocate space,
 //     record, and stream the model parameters and related information.
-RListIoManager SpecifyModel(Ptr<AggregatedStateSpaceRegression> model,
-                            Ptr<StateSpaceModel> augmented_model,
-                            SEXP state_specification,
-                            SEXP regression_prior,
-                            bool save_state_history,
-                            Vector *final_state,
-                            Vector *augmented_final_state,
-                            SEXP r_truth) {
+RListIoManager SpecifyModel(const Ptr<AggregatedStateSpaceRegression> &model,
+                            const Ptr<StateSpaceModel> &augmented_model,
+                            SEXP state_specification, SEXP regression_prior,
+                            bool save_state_history, Vector *final_state,
+                            Vector *augmented_final_state, SEXP r_truth) {
   RListIoManager io_manager;
 
   io_manager.add_list_element(
@@ -224,7 +217,7 @@ RListIoManager SpecifyModel(Ptr<AggregatedStateSpaceRegression> model,
         new BOOM::NativeMatrixListElement(
             new StateContributionCallback(model.get()),
             "state.contributions",
-            NULL));
+            nullptr));
 
     io_manager.add_list_element(
         new BOOM::NativeVectorListElement(
@@ -232,20 +225,20 @@ RListIoManager SpecifyModel(Ptr<AggregatedStateSpaceRegression> model,
                                  1,
                                  false),
             "latent.fine",
-            NULL));
+            nullptr));
     io_manager.add_list_element(
         new BOOM::NativeVectorListElement(
             new StateRowCallback(model.get(),
                                  0,
                                  false),
             "cumulator",
-            NULL));
+            nullptr));
 
     io_manager.add_list_element(
         new BOOM::NativeMatrixListElement(
             new StateContributionCallback(augmented_model.get()),
             "augmented.state.contributions",
-            NULL));
+            nullptr));
   }
   return io_manager;
 }
@@ -255,11 +248,12 @@ RListIoManager SpecifyModel(Ptr<AggregatedStateSpaceRegression> model,
 // for 'augmented_model'.  The sampled observations are the
 // next-to-last elements in the state vector for 'model'.
 // Returns true on success, false on error.
-void TranscribeResponseData(Ptr<AggregatedStateSpaceRegression> model,
-                            Ptr<StateSpaceModel> augmented_model,
+void TranscribeResponseData(const Ptr<AggregatedStateSpaceRegression> &model,
+                            const Ptr<StateSpaceModel> &augmented_model,
                             RErrorReporter *error_reporter) {
   const Mat &state(model->state());
-  std::vector<Ptr<BOOM::DoubleData> > & data(augmented_model->dat());
+  std::vector<Ptr<BOOM::StateSpace::MultiplexedDoubleData> > &data(
+      augmented_model->dat());
   int next_to_last_row = nrow(state) - 2;
   const BOOM::ConstVectorView imputed_data(state.row(next_to_last_row));
   if (data.size() != imputed_data.size()) {
@@ -271,7 +265,7 @@ void TranscribeResponseData(Ptr<AggregatedStateSpaceRegression> model,
     return;
   }
   for (int i = 0; i < imputed_data.size(); ++i) {
-    data[i]->set(imputed_data[i]);
+    data[i]->set_value(imputed_data[i], 0);
   }
 }
 
@@ -364,8 +358,8 @@ extern "C" {
           r_state_specification,  // as in bsts
           r_regression_prior,     // from SpikeSlabPrior
           true,                   // yes, save final state
-          NULL,                   // NULL storage for streaming final_state
-          NULL,                   // NULL storage for augmented_final_state
+          nullptr,                // storage for streaming final_state
+          nullptr,                // storage for augmented_final_state
           r_truth);
 
       // Do one posterior sampling step before getting ready to write.

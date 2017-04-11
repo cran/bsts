@@ -49,7 +49,9 @@ CompareBstsModels(model.list,
 }
 
 \value{
-  Returns invisible \code{NULL}.
+  Invisibly returns the matrix of cumulative one-step ahead prediction
+  errors (the lines in the top panel of the plot).  Each row in the
+  matrix corresponds to a model in model.list.
 }
 
 \author{

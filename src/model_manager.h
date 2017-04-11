@@ -18,6 +18,8 @@ namespace bsts {
 // the child ModelManager classes for specific model types.
 class ModelManager {
  public:
+  ModelManager();
+
   virtual ~ModelManager() {}
 
   // Create a ModelManager instance suitable for working with the
@@ -144,6 +146,30 @@ class ModelManager {
       SEXP r_newdata,
       SEXP r_burn);
 
+  // Time stamps are considered trivial if either (a) no time stamp information
+  // was provided by the user, or (b) each time stamp contains one observation
+  // and there are no gaps in the time series of observations.
+  ///////////////////////////////////
+  bool TimestampsAreTrivial() const {
+    return timestamps_are_trivial_;
+  }
+
+  int NumberOfTimePoints() const {
+    return number_of_time_points_;
+  }
+
+  // Returns the timestamp number of observation i.  Converts from R's unit
+  // based indexing system to C's 0-based system.
+  int TimestampMapping(int i) const {
+    return timestamps_are_trivial_ ? i : timestamp_mapping_[i] - 1;
+  }
+
+ protected:
+  // Checks to see if r_data_list has a field named timestamp.info, and use it
+  // to populate the follwoing fields: number_of_time_points_,
+  // timestamps_are_trivial_, and timestamp_mapping_.
+  void UnpackTimestampInfo(SEXP r_data_list);
+
  private:
   // Create the specific StateSpaceModel suitable for the given model
   // family.  The posterior sampler for the model is set, and entries
@@ -206,6 +232,18 @@ class ModelManager {
   virtual int UnpackHoldoutData(SEXP r_holdout_data) = 0;
   virtual Vector HoldoutDataOneStepHoldoutPredictionErrors(
       const Vector &final_state) = 0;
+
+  //----------------------------------------------------------------------
+  // Time stamps are trivial the timestamp information was NULL, or if there is
+  // at most one observation at each time point.
+  bool timestamps_are_trivial_;
+
+  // The number of distinct time points.
+  int number_of_time_points_;
+
+  // Indicates the time point (in R's 1-based counting system) to which each
+  // observation belongs.
+  std::vector<int> timestamp_mapping_;
 };
 
 }  // namespace bsts

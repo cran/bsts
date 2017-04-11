@@ -2,9 +2,9 @@
 #define ANALYSIS_COMMON_R_BSTS_SRC_STATE_SPACE_POISSON_MODEL_MANAGER_H_
 
 #include "model_manager.h"
-#include "Models/StateSpace/StateSpacePoissonModel.hpp"
-#include "LinAlg/Vector.hpp"
 #include "LinAlg/Matrix.hpp"
+#include "LinAlg/Vector.hpp"
+#include "Models/StateSpace/StateSpacePoissonModel.hpp"
 
 namespace BOOM {
 namespace bsts {

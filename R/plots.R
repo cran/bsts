@@ -1,4 +1,3 @@
-###----------------------------------------------------------------------
 plot.bsts <- function(x,
                       y = c("state", "components", "residuals", "coefficients",
                           "prediction.errors", "forecast.distribution",
@@ -64,11 +63,13 @@ PlotBstsPredictors <- function(bsts.object,
   ## Returns:
   ##   Invisible NULL.
   stopifnot(inherits(bsts.object, "bsts"))
+  if (HasDuplicateTimestamps(bsts.object)) {
+    stop("The bsts predictor plot is does not support multiple time stamps.")
+  }
   beta <- bsts.object$coefficients
   if (burn > 0) {
     beta <- beta[-(1:burn), , drop = FALSE]
   }
-
   inclusion.probabilities <- colMeans(beta != 0)
   keep <- inclusion.probabilities > inclusion.threshold
   if (any(keep)) {
@@ -108,7 +109,7 @@ PlotBstsPredictors <- function(bsts.object,
     } else {
       line.colors <- rep("black", number.of.predictors)
     }
-    times <- index(bsts.object$original.series)
+    times <- bsts.object$timestamp.info$timestamps
     if (number.of.predictors == 1) {
       plot(times, predictors, type = "l", lty = 1, col = line.colors,
            ylim = ylim, xlab = "", ylab = "Scaled Value", ...)
@@ -119,8 +120,7 @@ PlotBstsPredictors <- function(bsts.object,
         lines(times, predictors[, i], lty = i, col = line.colors[i], ...)
       }
     }
-    lines(zoo(scale(bsts.object$original.series),
-              index(bsts.object$original.series)),
+    lines(zoo(scale(bsts.object$original.series), times),
           col = "blue",
           lwd = 3)
     if (show.legend) {
@@ -239,7 +239,7 @@ PlotBstsComponents <- function(bsts.object,
   style <- match.arg(style)
 
   if (missing(time)) {
-    time <- index(bsts.object$original.series)
+    time <- bsts.object$timestamp.info$regular.timestamps
   }
   state <- bsts.object$state.contributions
   if (burn > 0) {
@@ -290,7 +290,10 @@ PlotBstsComponents <- function(bsts.object,
 ###----------------------------------------------------------------------
 PlotBstsState <- function(bsts.object, burn = SuggestBurn(.1, bsts.object),
                           time, show.actuals = TRUE,
-                          style = c("dynamic", "boxplot"), ...) {
+                          style = c("dynamic", "boxplot"),
+                          scale = c("linear", "mean"),
+                          ylim = NULL,
+                          ...) {
   ## Plots the posterior distribution of the mean of the training
   ## data, as determined by the state.
   ## Args:
@@ -302,28 +305,48 @@ PlotBstsState <- function(bsts.object, burn = SuggestBurn(.1, bsts.object),
   ##   style: Either "dynamic", for dynamic distribution plots, or
   ##     "boxplot", for box plots.  Partial matching is allowed, so
   ##     "dyn" or "box" would work, for example.
+  ##   scale: If the error family is logit or Poisson then setting
+  ##     scale to "mean" will pass the model state through the logit
+  ##     or exponential link functions before plotting.
   ##   ...: Extra arguments passed to PlotDynamicDistribution.
   ## Returns:
   ##   This function is called for its side effect, which is to
   ##   produce a plot on the current graphics device.
   stopifnot(inherits(bsts.object, "bsts"))
   style <- match.arg(style)
+  scale <- match.arg(scale)
   if (missing(time)) {
-    time <- index(bsts.object$original.series)
+    time <- bsts.object$timestamp.info$regular.timestamps
   }
   state <- bsts.object$state.contributions
   if (burn > 0) {
     state <- state[-(1:burn), , , drop = FALSE]
   }
   state <- rowSums(aperm(state, c(1, 3, 2)), dims = 2)
+  if (scale == "mean") {
+    if (bsts.object$family == "logit") {
+      state <- plogis(state)
+    } else if (bsts.object$family == "poisson") {
+      state <- exp(state)
+    }
+  }
+
+  if (is.null(ylim)) {
+    ylim <- range(state, bsts.object$original.series)
+  }
+
   if (style == "boxplot") {
-    TimeSeriesBoxplot(state, time = time, ...)
+    TimeSeriesBoxplot(state, time = time, ylim = ylim, ...)
   } else {
-    PlotDynamicDistribution(state, timestamps = time, ...)
+    PlotDynamicDistribution(state, timestamps = time, ylim = ylim, ...)
   }
   if (show.actuals) {
-    points(time, bsts.object$original.series, col = "blue", ...)
+    points(bsts.object$timestamp.info$timestamps,
+           bsts.object$original.series,
+           col = "blue",
+           ...)
   }
+  return(invisible(state))
 }
 
 ###----------------------------------------------------------------------
@@ -345,9 +368,17 @@ PlotBstsPredictionErrors <- function(bsts.object,
   ##   This function is called for its side effect, which is to
   ##   produce a plot on the current graphics device.
   stopifnot(inherits(bsts.object, "bsts"))
+  if (HasDuplicateTimestamps(bsts.object)) {
+    stop("The plot of one-step-ahead prediction errors does not work ",
+         "with duplicate time stamps.")
+  }
+  if (bsts.object$family %in% c("poisson", "logit")) {
+    stop("The plot of one-step-ahead prediction errors does not work ",
+         "with poisson and logit models.")
+  }
   style <- match.arg(style)
   if (missing(time)) {
-    time <- index(bsts.object$original.series)
+    time <- bsts.object$timestamp.info$timestamps
   }
 
   errors <- bsts.prediction.errors(bsts.object, burn = burn)
@@ -388,9 +419,8 @@ PlotBstsForecastDistribution <- function(bsts.object,
   stopifnot(inherits(bsts.object, "bsts"))
   style = match.arg(style)
   if (missing(time)) {
-    time = index(bsts.object$original.series)
+    time <- bsts.object$timestamp.info$timestamps
   }
-
   errors <- bsts.prediction.errors(bsts.object, burn = burn)
   forecast <- t(as.numeric(bsts.object$original.series) - t(errors))
   if (style == "dynamic") {
@@ -424,9 +454,16 @@ PlotBstsResiduals <- function(bsts.object, burn = SuggestBurn(.1, bsts.object),
   ##   This function is called for its side effect, which is to
   ##   produce a plot on the current graphics device.
   stopifnot(inherits(bsts.object, "bsts"))
+  if (HasDuplicateTimestamps(bsts.object)) {
+    stop("The bsts residual plot does not support duplicate time stamps.")
+  }
+  if (bsts.object$family %in% c("poisson", "logit")) {
+    stop("The bsts residual plot is only supported for continuous error",
+         " families.")
+  }
   style <- match.arg(style)
   if (missing(time)) {
-    time <- index(bsts.object$original.series)
+    time <- bsts.object$timestamp.info$timestamps
   }
   residuals <- residuals(bsts.object)
   if (style == "dynamic") {
@@ -466,7 +503,7 @@ PlotDynamicRegression <- function(
   }
   style <- match.arg(style)
   if (is.null(time)) {
-    time <- index(bsts.object$original.series)
+    time <- bsts.object$timestamp.info$regular.timestamps
   }
   beta <- bsts.object$dynamic.regression.coefficients
   ndraws <- dim(beta)[1]

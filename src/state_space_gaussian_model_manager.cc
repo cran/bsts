@@ -1,9 +1,9 @@
-#include "model_manager.h"
 #include "state_space_gaussian_model_manager.h"
+#include "model_manager.h"
 #include "utils.h"
 #include "r_interface/prior_specification.hpp"
-#include "Models/StateSpace/PosteriorSamplers/StateSpacePosteriorSampler.hpp"
 #include "Models/PosteriorSamplers/ZeroMeanGaussianConjSampler.hpp"
+#include "Models/StateSpace/PosteriorSamplers/StateSpacePosteriorSampler.hpp"
 
 namespace BOOM {
 namespace bsts {
@@ -43,7 +43,6 @@ StateSpaceModel * StateSpaceModelManager::CreateObservationModel(
     SEXP r_options,
     RListIoManager *io_manager) {
   model_.reset(new StateSpaceModel);
-
   // If the model is being created from scratch for the purpose of
   // learning, then r_data_list must be supplied.  If the model is
   // being created from an existing R object then we want to defer
@@ -86,11 +85,13 @@ StateSpaceModel * StateSpaceModelManager::CreateObservationModel(
 
 void StateSpaceModelManager::AddDataFromBstsObject(SEXP r_bsts_object) {
   SEXP r_original_series = getListElement(r_bsts_object, "original.series");
+  UnpackTimestampInfo(r_bsts_object);
   AddData(ToBoomVector(r_original_series),
           IsObserved(r_original_series));
 }
 
 void StateSpaceModelManager::AddDataFromList(SEXP r_data_list) {
+  UnpackTimestampInfo(r_data_list);
   AddData(ToBoomVector(getListElement(r_data_list, "response")),
           ToVectorBool(getListElement(r_data_list, "response.is.observed")));
 }
@@ -123,12 +124,22 @@ void StateSpaceModelManager::AddData(
       && (response.size() != response_is_observed.size())) {
     report_error("Vectors do not match in StateSpaceModelManager::AddData.");
   }
+  std::vector<Ptr<StateSpace::MultiplexedDoubleData>> data;
+  for (int i = 0; i < NumberOfTimePoints(); ++i) {
+    data.push_back(new StateSpace::MultiplexedDoubleData);
+  }
   for (int i = 0; i < response.size(); ++i) {
-    Ptr<DoubleData> data_point(new DoubleData(response[i]));
+    NEW(DoubleData, observation)(response[i]);
     if (!response_is_observed.empty() && !response_is_observed[i]) {
-      data_point->set_missing_status(Data::completely_missing);
+      observation->set_missing_status(Data::completely_missing);
     }
-    model_->add_data(data_point);
+    data[TimestampMapping(i)]->add_data(observation);
+  }
+  for (int i = 0; i < NumberOfTimePoints(); ++i) {
+    if (data[i]->all_missing()) {
+      data[i]->set_missing_status(Data::completely_missing);
+    }
+    model_->add_data(data[i]);
   }
 }
 

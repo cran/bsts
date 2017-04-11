@@ -1,5 +1,5 @@
-#include "state_space_gaussian_model_manager.h"
 #include "state_space_regression_model_manager.h"
+#include "state_space_gaussian_model_manager.h"
 #include "utils.h"
 
 #include "r_interface/list_io.hpp"
@@ -34,10 +34,33 @@ StateSpaceRegressionModel * SSRMF::CreateObservationModel(
     Vector response(ToBoomVector(getListElement(r_data_list, "response")));
     std::vector<bool> response_is_observed(ToVectorBool(getListElement(
         r_data_list, "response.is.observed")));
-    model_.reset(new StateSpaceRegressionModel(
-      response,
-      predictors,
-      response_is_observed));
+    UnpackTimestampInfo(r_data_list);
+    if (TimestampsAreTrivial()) {
+      model_.reset(new StateSpaceRegressionModel(
+          response,
+          predictors,
+          response_is_observed));
+    } else {
+      // timestamps are non-trivial.
+      model_.reset(new StateSpaceRegressionModel(ncol(predictors)));
+      std::vector<Ptr<StateSpace::MultiplexedRegressionData>> data;
+      for (int i = 0; i < NumberOfTimePoints(); ++i) {
+        data.push_back(new StateSpace::MultiplexedRegressionData);
+      }
+      for (int i = 0; i < response.size(); ++i) {
+        NEW(RegressionData, observation)(response[i], predictors.row(i));
+        if (!response_is_observed[i]) {
+          observation->set_missing_status(Data::completely_missing);
+        }
+        data[TimestampMapping(i)]->add_data(observation);
+      }
+      for (int i = 0; i < NumberOfTimePoints(); ++i) {
+        if (data[i]->sample_size() == 0) {
+          data[i]->set_missing_status(Data::completely_missing);
+        }
+        model_->add_data(data[i]);
+      }
+    }
   } else {
     // If no data was passed from R then build the model from its
     // default constructor.  We need to know the dimension of the

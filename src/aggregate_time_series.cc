@@ -1,12 +1,12 @@
 // Copyright 2011 Google Inc. All Rights Reserved.
 // Author: stevescott@google.com (Steve Scott)
 
-#include <vector>
 #include <algorithm>
-#include "LinAlg/Matrix.hpp"
-#include "LinAlg/SubMatrix.hpp"
+#include <vector>
 #include "Rinternals.h"
 #include "r_interface/boom_r_tools.hpp"
+#include "LinAlg/Matrix.hpp"
+#include "LinAlg/SubMatrix.hpp"
 
 extern "C" {
   // Sum the results of a fine-scale time series to a coarser scale.

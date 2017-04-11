@@ -2,9 +2,9 @@
 #define ANALYSIS_COMMON_R_BSTS_SRC_STATE_SPACE_GAUSSIAN_MODEL_MANAGER_H_
 
 #include "model_manager.h"
-#include "Models/StateSpace/StateSpaceModel.hpp"
-#include "LinAlg/Vector.hpp"
 #include "LinAlg/Matrix.hpp"
+#include "LinAlg/Vector.hpp"
+#include "Models/StateSpace/StateSpaceModel.hpp"
 
 namespace BOOM {
 namespace bsts {

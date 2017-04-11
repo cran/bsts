@@ -110,6 +110,9 @@
 }
 
 \examples{
+## Setting the seed to avoid small sample effects resulting from small
+## number of iterations.
+set.seed(8675309)
 n <- 1000
 x <- matrix(rnorm(n))
 
@@ -131,8 +134,9 @@ plot(y - x * beta, main = "Local Level Effect")
 ss <- list()
 ss <- AddLocalLevel(ss, y)
 ss <- AddDynamicRegression(ss, y ~ x)
-## In a real appliction you'd probably want more than 100 iterations.
-model <- bsts(y, state.specification = ss, niter = 100)
+## In a real appliction you'd probably want more than 100
+## iterations. See comment above about the random seed.
+model <- bsts(y, state.specification = ss, niter = 100, seed = 8675309)
 plot(model, "dynamic")
 }
 

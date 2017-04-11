@@ -1,10 +1,9 @@
 #include "state_space_student_model_manager.h"
 #include "utils.h"
 
+#include "r_interface/prior_specification.hpp"
 #include "Models/Glm/PosteriorSamplers/TRegressionSpikeSlabSampler.hpp"
 #include "Models/StateSpace/PosteriorSamplers/StateSpaceStudentPosteriorSampler.hpp"
-#include "r_interface/prior_specification.hpp"
-
 
 namespace BOOM {
 namespace bsts {
@@ -33,8 +32,32 @@ StateSpaceStudentRegressionModel * SSSMM::CreateObservationModel(
         Matrix(response.size(), 1, 1.0);
     std::vector<bool> response_is_observed(ToVectorBool(getListElement(
         r_data_list, "response.is.observed")));
-    model_.reset(new StateSpaceStudentRegressionModel(
-        response, predictors, response_is_observed));
+    UnpackTimestampInfo(r_data_list);
+    if (TimestampsAreTrivial()) {
+      model_.reset(new StateSpaceStudentRegressionModel(
+          response, predictors, response_is_observed));
+    } else {
+      // Nontrivial timestamps.
+      int xdim = predictors.ncol();
+      model_.reset(new StateSpaceStudentRegressionModel(xdim));
+      std::vector<Ptr<StateSpace::AugmentedStudentRegressionData>> data;
+      for (int i = 0; i < NumberOfTimePoints(); ++i) {
+        data.push_back(new StateSpace::AugmentedStudentRegressionData);
+      }
+      for (int i = 0; i < response.size(); ++i) {
+        NEW(RegressionData, observation)(response[i], predictors.row(i));
+        if (!response_is_observed[i]) {
+          observation->set_missing_status(Data::completely_missing);
+        }
+        data[TimestampMapping(i)]->add_data(observation);
+      }
+      for (int i = 0; i < NumberOfTimePoints(); ++i) {
+        if (data[i]->sample_size() == 0) {
+          data[i]->set_missing_status(Data::completely_missing);
+        }
+        model_->add_data(data[i]);
+      }
+    }
     model_->set_regression_flag(regression);
   } else {
     // If no data was passed from R then build the model from its
@@ -154,8 +177,8 @@ void SSSMM::AddData(const Vector &response,
                     const std::vector<bool> &response_is_observed) {
   int sample_size = response.size();
   for (int i = 0; i < sample_size; ++i) {
-    Ptr<StateSpace::VarianceAugmentedRegressionData> data_point(
-        new StateSpace::VarianceAugmentedRegressionData(
+    Ptr<StateSpace::AugmentedStudentRegressionData> data_point(
+        new StateSpace::AugmentedStudentRegressionData(
             response[i],
             predictors.row(i)));
     if (!response_is_observed.empty() && !response_is_observed[i]) {

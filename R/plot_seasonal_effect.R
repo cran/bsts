@@ -57,7 +57,7 @@ PlotSeasonalEffect <- function(bsts.object,
     ylim <- range(effect)
   }
   vary.ylim <- is.null(ylim)
-  time <- index(bsts.object$original.series)
+  time <- bsts.object$timestamp.info$regular.timestamps
   nr <- floor(sqrt(nseasons))
   nc <- ceiling(nseasons / nr)
   if (is.null(get.season.name) && inherits(time, c("Date", "POSIXt"))) {

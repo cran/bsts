@@ -26,10 +26,14 @@ CompareBstsModels <- function(model.list,
   ##   grid: Logical.  Should gridlines be drawn in the background?
   ##
   ## Returns:
-  ##   Nothing (invisible NULL).
+  ##   Invisibly returns the matrix of cumulative errors (the lines in
+  ##   the top panel of the plot).
   stopifnot(is.list(model.list))
   stopifnot(length(model.list) > 1)
   stopifnot(all(sapply(model.list, inherits, "bsts")))
+  if (HasDuplicateTimestamps(model.list[[1]])) {
+    stop("CompareBstsModels does not support duplicate timestamps.")
+  }
   time.dimension <-
     sapply(model.list, function(m) {dim(m$state.contributions)[3]})
   stopifnot(all(time.dimension == time.dimension[1]))
@@ -46,18 +50,15 @@ CompareBstsModels <- function(model.list,
   opar$mar <- original.margins
   margins[1] <- 0
   par(mar = margins)
-  cumulative.errors <-
-    matrix(nrow = number.of.models,
-           ncol = dim(model.list[[1]]$state.contributions)[3])
+  errors <- bsts.prediction.errors(model.list[[1]], burn = burn)
+  cumulative.errors <- matrix(nrow = number.of.models, ncol = ncol(errors))
   for (i in 1:number.of.models) {
-    prediction.errors <-
-        bsts.prediction.errors(model.list[[i]])[-(1:burn), , drop = FALSE]
+    prediction.errors <- bsts.prediction.errors(model.list[[i]], burn = burn)
     cumulative.errors[i, ] <- cumsum(abs(colMeans(prediction.errors)))
   }
-
   if (is.null(colors)) colors <- c("black", rainbow(number.of.models-1))
 
-  idx <- index(as.zoo(model.list[[1]]$original.series))
+  idx <- model.list[[1]]$timestamp.info$timestamps
   plot(zoo(cumulative.errors[1, ], order.by = idx),
        ylim = range(cumulative.errors),
        ylab = "cumulative absolute error",
@@ -98,5 +99,5 @@ CompareBstsModels <- function(model.list,
   }
   par(opar)
   if (filename != "") dev.off()
-  return(invisible(NULL))
+  return(invisible(cumulative.errors))
 }

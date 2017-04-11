@@ -1,5 +1,5 @@
-.FormatBstsDataAndOptions <- function(family, response, predictors, bma.method,
-                                      oda.options) {
+.FormatBstsDataAndOptions <- function(family, response, predictors,
+                                      model.options, timestamp.info) {
   ## This function is part of the implementation for bsts.  It puts
   ## the data and model options into the format expected by the
   ## underlying C++ code.
@@ -11,26 +11,25 @@
   ##     responses to be modeled.
   ##   predictors: The matrix of predictor variables.  This can be
   ##     NULL if the model has no regression component.
-  ##   bma.method: Character string naming the method to use for model
-  ##     averaging, see the bma.method argument to bsts.
-  ##   oda.options: A list of options to be used if bma.method ==
-  ##     "ODA".  See the oda.options argument of bsts.
+  ##   model.options:  Options returned by BstsOptions().
+  ##   timestamp.info:  The object returned by .ComputeTimestampInfo.
   ##
   ## Returns:  A list with two elements:  data.list and model.options.
 
-  if (family != "gaussian" && bma.method == "ODA") {
+  if (family != "gaussian" && model.options$bma.method == "ODA") {
     warning("Orthoganal data augmentation is not available with a",
             "non-Gaussian model family.  Switching to SSVS.")
-    bma.method <- "SSVS"
+    model.options$bma.method <- "SSVS"
   }
 
   if (family %in% c("gaussian", "student")) {
+    if (is.matrix(response) && ncol(response) != 1) {
+      stop("Matrix responses only work for logit and Poisson models.  ",
+           "Did you mean to specify a different model family?")
+    }
     data.list <- list(response = as.numeric(response),
                       predictors = predictors,
                       response.is.observed = !is.na(response))
-    model.options <- list(
-        bma.method = bma.method,
-        oda.options = oda.options)
   } else if (family == "logit") {
     ## Unpack the vector of trials.  If 'response' is a 2-column
     ## matrix then the first column is the vector of success counts
@@ -64,7 +63,7 @@
                       predictors = predictors,
                       response.is.observed = !is.na(response))
     ## TODO(stevescott):  consider exposing clt.threshold as an option
-    model.options <- list(clt.threshold = as.integer(3))
+    model.options$clt.threshold <- as.integer(3)
   } else if (family == "poisson") {
     if (!is.null(dim(response)) && length(dim(response)) > 1) {
       ## Multi-dimensional arrays are not allowed, and the matrix must
@@ -85,9 +84,9 @@
                       exposure = exposure,
                       predictors = predictors,
                       response.is.observed = !is.na(response))
-    model.options <- NULL
   } else {
     stop("Unrecognized value for 'family' argument in bsts.")
   }
+  data.list$timestamp.info <- timestamp.info
   return(list(data.list = data.list, model.options = model.options))
 }

@@ -182,7 +182,8 @@ plot.bsts.prediction <- function(x,
          original.series,
          type = "l",
          xlim = range(time, pred.time),
-         ylim = ylim)
+         ylim = ylim,
+         ...)
   } else {
     pred.time <- tail(time, 1) + (1:n1) * deltat
   }

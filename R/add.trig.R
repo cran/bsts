@@ -73,10 +73,6 @@ AddTrig <- function(state.specification = NULL,
                sigma.prior = sigma.prior,
                initial.state.prior = initial.state.prior,
                size = dimension)
-  ## TODO(stevescott): I suspect the 'size' element is vestigial and
-  ## can be removed from here and several other state component
-  ## descriptors.
-
   class(trig) <- c("Trig", "StateModel")
   state.specification[[length(state.specification) + 1]] <- trig
   return(state.specification)

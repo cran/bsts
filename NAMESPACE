@@ -1,11 +1,3 @@
-exportPattern("^[^\\.]")
-S3method(plot, bsts)
-S3method(summary, bsts)
-S3method(predict, bsts)
-S3method(residuals, bsts)
-S3method(plot, bsts.prediction)
-S3method(plot, bsts.mixed)
-
 import(Boom,
        BoomSpikeSlab,
        xts,
@@ -18,7 +10,91 @@ importFrom("graphics", "abline", "axis", "axis.Date", "axis.POSIXct",
 importFrom("stats", ".checkMFClasses", ".getXlevels",
            "delete.response", "median", "model.frame", "model.frame.default",
            "model.matrix", "model.response", "na.exclude", "na.omit", "na.pass",
-           "plot.ts", "quantile", "rnorm", "sd", "terms", "var")
+           "plogis", "plot.ts", "quantile", "rnorm", "sd", "terms", "var")
 importFrom("utils", "head", "help", "tail")
 
-useDynLib(bsts)
+export(AddAr,
+       AddAutoAr,
+       AddDynamicRegression,
+       AddFixedDateHoliday,
+       AddGeneralizedLocalLinearTrend,
+       AddLastWeekdayInMonthHoliday,
+       AddLocalLevel,
+       AddLocalLinearTrend,
+       AddNamedHolidays,
+       AddNthWeekdayInMonthHoliday,
+       AddSeasonal,
+       AddSemilocalLinearTrend,
+       AddStudentLocalLinearTrend,
+       AddTrig,
+       AggregateTimeSeries,
+       AggregateWeeksToMonths,
+       bsts,
+       bsts.mixed,
+       bsts.prediction.errors,
+       BstsOptions,
+       CompareBstsModels,
+       EstimateTimeScale,
+       ExtendTime,
+       GeometricSequence,
+       GetFractionOfDaysInInitialMonth,
+       GetFractionOfDaysInInitialQuarter,
+       HarveyCumulator,
+       HasDuplicateTimestamps,
+       IsRegular,
+       LastDayInMonth,
+       MATCH.NumericTimestamps,
+       MatchWeekToMonth,
+       MonthDistance,
+       NamedHolidays,
+       NoDuplicates,
+       NoGaps,
+       plot.bsts,
+       PlotBstsCoefficients,
+       PlotBstsComponents,
+       PlotBstsForecastDistribution,
+       plot.bsts.mixed,
+       PlotBstsMixedComponents,
+       PlotBstsMixedState,
+       plot.bsts.prediction,
+       PlotBstsPredictionErrors,
+       PlotBstsPredictors,
+       PlotBstsResiduals,
+       PlotBstsSize,
+       PlotBstsState,
+       PlotDynamicRegression,
+       PlotHolidays,
+       PlotSeasonalEffect,
+       predict.bsts,
+       Quarter,
+       RegularizeTimestamps,
+       RegularizeTimestamps.Date,
+       RegularizeTimestamps.POSIXt,
+       RegularizeTimestamps.default,
+       RegularizeTimestamps.numeric,
+       residuals.bsts,
+       Shorten,
+       SimulateFakeMixedFrequencyData,
+       SpikeSlabArPrior,
+       StateSizes,
+       SuggestBurn,
+       summary.bsts,
+       TimeSeriesBoxplot,
+       WeekEndsMonth,
+       WeekEndsQuarter)
+
+S3method(plot, bsts)
+S3method(summary, bsts)
+S3method(predict, bsts)
+S3method(residuals, bsts)
+S3method(plot, bsts.prediction)
+S3method(plot, bsts.mixed)
+
+S3method(RegularizeTimestamps, default)
+S3method(RegularizeTimestamps, numeric)
+S3method(RegularizeTimestamps, Date)
+S3method(RegularizeTimestamps, POSIXt)
+
+S3method(MATCH, NumericTimestamps)
+
+useDynLib(bsts, .registration = TRUE)

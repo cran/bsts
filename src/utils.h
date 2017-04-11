@@ -6,8 +6,8 @@
 
 #include "r_interface/boom_r_tools.hpp"
 #include "r_interface/list_io.hpp"
-#include "Models/StateSpace/StateSpaceModelBase.hpp"
 #include "Models/Glm/Glm.hpp"
+#include "Models/StateSpace/StateSpaceModelBase.hpp"
 
 namespace BOOM {
 namespace bsts {
@@ -53,7 +53,7 @@ void RecordDynamicRegression(StateSpaceModelBase * model,
 //======================================================================
 // Initialize the model to be empty, except for variables that are
 // known to be present with probability 1.
-void DropUnforcedCoefficients(Ptr<GlmModel> glm,
+void DropUnforcedCoefficients(const Ptr<GlmModel> &glm,
                               const BOOM::Vector &prior_inclusion_probs);
 
 //======================================================================

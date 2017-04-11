@@ -11,28 +11,16 @@
 
 \usage{
 bsts.prediction.errors(bsts.object,
-                       newdata,
-                       burn = SuggestBurn(.1, bsts.object),
-                       na.action = na.omit)
+                       burn = SuggestBurn(.1, bsts.object))
 }
 
 \arguments{
 
   \item{bsts.object}{ An object of class \code{\link{bsts}}.}
 
-  \item{newdata}{An optional holdout sample of data.  If
-    \code{bsts.object} contains a regression component then this must be
-    a \code{\link{data.frame}} with all the relevant variables in the
-    model formula for \code{bsts.object}.  Otherwise this should be a
-    numeric vector.  If \code{newdata} is omitted then the prediction
-    errors will be with respect to the training data.  }
-
   \item{burn}{An integer giving the number of MCMC iterations to discard
     as burn-in.  If \code{burn <= 0} then no burn-in sample will be
     discarded.}
-
-  \item{na.action}{A function determining what should be done with
-    missing values in \code{newdata}.}
 }
 
 \value{
@@ -58,8 +46,7 @@ bsts.prediction.errors(bsts.object,
   \code{\link{AddLocalLinearTrend}},
   \code{\link{AddGeneralizedLocalLinearTrend}},
   \code{\link[BoomSpikeSlab]{SpikeSlabPrior}},
-  \code{\link[Boom]{SdPrior}},
-  \code{\link{bsts.holdout.prediction.errors}}.
+  \code{\link[Boom]{SdPrior}}.
 }
 
 \examples{
