@@ -43,41 +43,93 @@ residuals.bsts <- function(object,
 }
 ###----------------------------------------------------------------------
 bsts.prediction.errors <- function(bsts.object,
+                                   cutpoints = NULL,
                                    burn = SuggestBurn(.1, bsts.object)) {
-  ## Returns the posterior distribution of the one-step-ahead
-  ## prediction errors from the bsts.object.  The errors are organized
-  ## as a matrix, with rows corresponding to MCMC iteration, and
-  ## columns corresponding to time.
+  ## Returns the posterior distribution of the one-step-ahead prediction errors
+  ## from the bsts.object.  The errors are computing using the Kalman filter,
+  ## and are of two types.
+  ##
+  ## Purely in-sample errors are computed as a by-product of the Kalman filter
+  ## as a result of fitting the model.  These are stored in the bsts.object
+  ## assuming the save.prediction.errors argument is TRUE, which is the default.
+  ## The in-sample errors are 'in-sample' in the sense that the parameter values
+  ## used to run the Kalman filter are drawn from their posterior distribution
+  ## given complete data.  Conditional on the parameters in that MCMC iteration,
+  ## each 'error' is the difference between the observed y[t] and its
+  ## expectation given data to t-1.
+  ##
+  ## Purely out-of-sample errors can be computed by specifying the 'cutpoints'
+  ## argument.  If cutpoints are supplied then a separate MCMC is run using just
+  ## data up to the cutpoint.  The Kalman filter is then run on the remaining
+  ## data, again finding the difference between y[t] and its expectation given
+  ## data to t-1, but conditional on parameters estimated using data up to the
+  ## cutpoint.
+  ##
   ## Args:
-  ##   bsts.object:  An object created by a call to 'bsts'
+  ##   bsts.object:  An object created by a call to 'bsts'.
+  ##   cutpoints: An increasing sequence of integers between 1 and the number of
+  ##     time points in the training data for 'bsts.object', or NULL.  If NULL
+  ##     then the in-sample one-step prediction errors from the bsts object will
+  ##     be extracted and returned.  Otherwise the model will be re-fit with a
+  ##     separate MCMC run for each entry in 'cutpoints'.  Data up to each
+  ##     cutpoint will be included in the fit, and one-step prediction errors
+  ##     for data after the cutpoint will be computed.
   ##   burn:  The number of MCMC iterations to discard as burn-in.
+  ##
   ## Returns:
-  ##   A matrix of prediction errors, with rows corresponding to MCMC
-  ##   iteration, and columns to time.
+  ##   A list, with entries giving the distribution of one-step prediction
+  ##   errors corresponding to individual cutpoints.  Each list entry is a
+  ##   matrix, with rows corresponding to MCMC draws, and columns corresponding
+  ##   to time points in the data for bsts.object.  If the in-sample prediction
+  ##   errors were stored in the original model fit, they will be present in
+  ##   list.
+  stopifnot(inherits(bsts.object, "bsts"))
   stopifnot(is.numeric(burn),
             length(burn) == 1,
             burn < bsts.object$niter)
   if (bsts.object$family %in% c("logit", "poisson")) {
     stop("Prediction errors are not supported for Poisson or logit models.")
   }
-  if (!is.null(bsts.object$one.step.prediction.errors)) {
-    errors <- bsts.object$one.step.prediction.errors
-    stopifnot(burn < nrow(errors))
-    if (burn > 0) {
-      errors <- errors[-(1:burn), , drop = FALSE]
-    }
-    if (!bsts.object$timestamp.info$timestamps.are.trivial) {
-      errors <- errors[,
-                       bsts.object$timestamp.info$timestamp.mapping,
-                       drop = FALSE]
-    }
-    return(errors)
+  if (HasDuplicateTimestamps(bsts.object)) {
+    stop("Prediction errors are not supported for duplicate timestamps.")
   }
 
-  errors <- .Call("analysis_common_r_bsts_one_step_prediction_errors_",
-                  bsts.object,
-                  NULL,
-                  burn,
-                  PACKAGE = "bsts")
+  if (!is.null(cutpoints) && length(cutpoints) > 0) {
+    stopifnot(length(cutpoints) <= bsts.object$number.of.time.points,
+              all(cutpoints > 0),
+              all(cutpoints < bsts.object$number.of.time.points))
+    errors <- .Call("analysis_common_r_bsts_one_step_prediction_errors_",
+                    bsts.object,
+                    as.integer(cutpoints),
+                    PACKAGE = "bsts")
+  } else {
+    errors <- NULL
+  }
+
+  if (!is.null(bsts.object$one.step.prediction.errors)) {
+    errors$in.sample <- bsts.object$one.step.prediction.errors
+  }
+
+  if (burn > 0) {
+    for (i in seq_along(errors)) {
+      errors[[i]] <- errors[[i]][-(1:burn), , drop = FALSE]
+    }
+  }
+
+  if (!bsts.object$timestamp.info$timestamps.are.trivial) {
+    ## If timestamps are not trivial then there are either duplicate timestamps
+    ## or some missing values in the data.  Duplicates were checked above, so
+    ## there must be missing observations, which will not be found in
+    ## bsts.object$original.series.  The following loop eliminates them from the
+    ## set of one step prediction errors.
+    mapping <- bsts.object$timestamp.info$timestamp.mapping
+    for (i in seq_along(errors)) {
+      errors[[i]] <- errors[[i]][, mapping, drop = FALSE]
+    }
+  }
+
+  attributes(errors)$cutpoints <- cutpoints
+  attributes(errors)$timestamps <- bsts.object$timestamp.info$timestamps
+  class(errors) <- "bsts.prediction.errors"
   return(errors)
 }

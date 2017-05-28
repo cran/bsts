@@ -39,7 +39,7 @@ summary.bsts <- function(object, burn = SuggestBurn(.1, object), ...) {
   }
 
   ## TODO(stevescott):  consider camel casing this function.
-  prediction.errors <- bsts.prediction.errors(object, burn = burn)
+  prediction.errors <- bsts.prediction.errors(object, burn = burn)$in.sample
   prediction.sse <- sum(colMeans(prediction.errors)^2)
   original.series <- as.numeric(object$original.series)
   dy <- diff(original.series)

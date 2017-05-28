@@ -75,7 +75,7 @@ StateSpacePoissonModel * SSPMM::CreateObservationModel(
         data[TimestampMapping(i)]->add_data(data_point);
       }
       for (int i = 0; i < NumberOfTimePoints(); ++i) {
-        if (data[i]->sample_size() == 0) {
+        if (data[i]->observed_sample_size() == 0) {
           data[i]->set_missing_status(Data::completely_missing);
         }
         model_->add_data(data[i]);
@@ -166,32 +166,7 @@ int SSPMM::UnpackForecastData(SEXP r_prediction_data) {
 
 Vector SSPMM::SimulateForecast(const Vector &final_state) {
   return model_->simulate_forecast(
-      forecast_predictors_, forecast_exposure_, final_state);
-}
-
-int SSPMM::UnpackHoldoutData(SEXP r_holdout_data) {
-  holdout_response_ = ToBoomVector(getListElement(
-      r_holdout_data, "response"));
-  forecast_predictors_ = ExtractPredictors(
-      r_holdout_data, "predictors", holdout_response_.size());
-  forecast_exposure_ = ToBoomVector(getListElement(
-      r_holdout_data, "exposure"));
-  if (forecast_exposure_.size() != holdout_response_.size()) {
-    report_error("Data sizes do not match in holdout data.");
-  }
-  return holdout_response_.size();
-}
-
-Vector SSPMM::HoldoutDataOneStepHoldoutPredictionErrors(
-    const Vector &final_state) {
-  PoissonDataImputer data_imputer;
-  return model_->one_step_holdout_prediction_errors(
-      GlobalRng::rng,
-      data_imputer,
-      holdout_response_,
-      forecast_exposure_,
-      forecast_predictors_,
-      final_state);
+      rng(), forecast_predictors_, forecast_exposure_, final_state);
 }
 
 void SSPMM::SetPredictorDimension(int xdim) {

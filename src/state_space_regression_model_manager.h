@@ -7,6 +7,39 @@
 namespace BOOM {
 namespace bsts {
 
+class StateSpaceRegressionHoldoutErrorSampler
+    : public HoldoutErrorSamplerImpl {
+ public:
+  // Args:
+  //   model:  The model containing data up to a specified cutpoint.
+  //   holdout_responses:  Observed values after the cutpoint.
+  //   holdout_predictors: A matrix of observed predictors corresponding to
+  //     holdout_responses.
+  //   niter: The desired number of draws (MCMC iterations) from the posterior
+  //     distribution.
+  //   errors:  A matrix that will hold the output of the simulation.
+  StateSpaceRegressionHoldoutErrorSampler(
+      const Ptr<StateSpaceRegressionModel> &model,
+      const Vector &holdout_responses,
+      const Matrix &holdout_predictors,
+      int niter,
+      Matrix *errors)
+      : model_(model),
+        holdout_responses_(holdout_responses),
+        holdout_predictors_(holdout_predictors),
+        niter_(niter),
+        errors_(errors) {}
+
+  void sample_holdout_prediction_errors() override;
+
+ private:
+  Ptr<StateSpaceRegressionModel> model_;
+  Vector holdout_responses_;
+  Matrix holdout_predictors_;
+  int niter_;
+  Matrix *errors_;
+};
+
 class StateSpaceRegressionModelManager
     : public GaussianModelManagerBase {
  public:
@@ -18,13 +51,15 @@ class StateSpaceRegressionModelManager
       SEXP r_options,
       RListIoManager *io_manager) override;
 
+  HoldoutErrorSampler CreateHoldoutSampler(
+      SEXP r_bsts_object,
+      int cutpoint,
+      Matrix *prediction_error_output) override;
+
   void AddDataFromBstsObject(SEXP r_bsts_object) override;
   void AddDataFromList(SEXP r_data_list) override;
   int UnpackForecastData(SEXP r_prediction_data) override;
   Vector SimulateForecast(const Vector &final_state) override;
-  int UnpackHoldoutData(SEXP r_holdout_data) override;
-  Vector HoldoutDataOneStepHoldoutPredictionErrors(
-      const Vector &final_state) override;
 
   void SetPredictorDimension(int xdim);
 
@@ -61,7 +96,6 @@ class StateSpaceRegressionModelManager
   Ptr<StateSpaceRegressionModel> model_;
   int predictor_dimension_;
   Matrix forecast_predictors_;
-  Vector holdout_responses_;
 };
 
 }  // namespace bsts

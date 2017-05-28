@@ -56,7 +56,7 @@ StateSpaceLogitModel * StateSpaceLogitModelManager::CreateObservationModel(
         data[TimestampMapping(i)]->add_data(data_point);
       }
       for (int i = 0; i < NumberOfTimePoints(); ++i) {
-        if (data[i]->sample_size() == 0) {
+        if (data[i]->observed_sample_size() == 0) {
           data[i]->set_missing_status(Data::completely_missing);
         }
         model_->add_data(data[i]);
@@ -165,34 +165,10 @@ int StateSpaceLogitModelManager::UnpackForecastData(SEXP r_prediction_data) {
 
 Vector StateSpaceLogitModelManager::SimulateForecast(
     const Vector &final_state) {
-  return model_->simulate_forecast(forecast_predictors_,
+  return model_->simulate_forecast(rng(),
+                                   forecast_predictors_,
                                    forecast_trials_,
                                    final_state);
-}
-
-int StateSpaceLogitModelManager::UnpackHoldoutData(SEXP r_holdout_data) {
-  forecast_trials_ = ToBoomVector(getListElement(r_holdout_data, "trials"));
-  forecast_predictors_ = ExtractPredictors(r_holdout_data, "predictors",
-                                           forecast_trials_.size());
-  holdout_response_ = ToBoomVector(getListElement(r_holdout_data, "response"));
-  int n = holdout_response_.size();
-  if (forecast_predictors_.nrow() != n || holdout_response_.size() != n) {
-    report_error("Holdout data of the wrong size passed to "
-                 "StateSpaceLogitModelManager::UpackHoldoutData");
-  }
-  return n;
-}
-
-Vector StateSpaceLogitModelManager::HoldoutDataOneStepHoldoutPredictionErrors(
-    const Vector &final_state) {
-  BinomialLogitCltDataImputer data_imputer(clt_threshold_);
-  return model_->one_step_holdout_prediction_errors(
-      GlobalRng::rng,
-      data_imputer,
-      holdout_response_,
-      forecast_trials_,
-      forecast_predictors_,
-      final_state);
 }
 
 void StateSpaceLogitModelManager::AddData(

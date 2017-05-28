@@ -44,8 +44,23 @@
                        ...)
   PlotBstsResiduals(bsts.object, burn = SuggestBurn(.1, bsts.object),
                        time, style = c("dynamic", "boxplot"), ...)
-  PlotBstsPredictionErrors(bsts.object, burn = SuggestBurn(.1, bsts.object),
-                       time, style = c("dynamic", "boxplot"), ...)
+
+  PlotBstsPredictionErrors(bsts.object, cutpoints = NULL,
+                           burn = SuggestBurn(.1, bsts.object),
+                           style = c("dynamic", "boxplot"),
+                           xlab = "Time", ylab = "", main = "",
+                           ...)
+
+  PlotBstsForecastDistribution(bsts.object, cutpoints = NULL,
+                               burn = SuggestBurn(.1, bsts.object),
+                               style = c("dynamic", "boxplot"),
+                               xlab = "Time",
+                               ylab = "",
+                               main = "",
+                               show.actuals = TRUE,
+                               col.actuals = "blue",
+                               ...)
+
   PlotBstsSize(bsts.object, burn = SuggestBurn(.1, bsts.object), style =
                        c("histogram", "ts"), ...)
   PlotSeasonalEffect(bsts.object, nseasons = 7, season.duration = 1,
@@ -63,53 +78,16 @@
 
   \item{burn}{The number of MCMC iterations to discard as burn-in.}
 
-  \item{time}{An optional vector of values to plot against.  If missing,
-    the default is to diagnose the time scale of the original time
-    series.}
+  \item{col.actuals}{The color to use for the actual data when comparing
+    actuals vs forecasts.}
 
-  \item{same.scale}{Logical.  If \code{TRUE} then all the state
-    components will be plotted with the same scale on the vertical axis.
-    If \code{FALSE} then each component will get its own scale for the
-    vertical axis.}
-
-  \item{show.actuals}{Logical.  If \code{TRUE} then actual values from
-    the fitted series will be shown on the plot.}
-
-  \item{scale}{The scale on which to plot the state.  If the error
-    family is "logit" or "poisson" then the state can either be plotted
-    on the scale of the linear predictor (e.g. trend + seasonal +
-    regression) or the linear predictor can be passed through the link
-    function so as to plot the distribution of the conditional mean.}
-
-  \item{style}{The desired plot style.  Partial matching is allowed, so
-    "dyn" would match "dynamic", for example.}
-
-  \item{layout}{For controlling the layout of functions that generate
-    mutiple plots.}
-
-  \item{inclusion.threshold}{An inclusion probability that individual
-    coefficients must exceed in order to be displayed when \code{what ==
-    "coefficients"}.  See the help file for
-    \code{\link[BoomSpikeSlab]{plot.lm.spike}.}}
-
-  \item{number.of.variables}{If non-\code{NULL} this specifies the
-    number of coefficients to plot, taking precedence over
-    \code{inclusion.threshold}.  See \code{\link[BoomSpikeSlab]{plot.lm.spike}.}}
-
-  \item{ylim}{Limits for the vertical axis.  If \code{NULL} these will
-    be inferred from the state components and the \code{same.scale}
-    argument.  Otherwise all plots will be created with the same
-    \code{ylim} values.}
-
-  \item{nseasons}{If there is only one seasonal component in the model,
-    this argument is ignored.  If there are multiple seasonal
-    components then \code{nseasons} and \code{season.duration} are used
-    to select the desired one.}
-
-  \item{season.duration}{If there is only one seasonal component in the
-    model, this argument is ignored.  If there are multiple seasonal
-    components then \code{nseasons} and \code{season.duration} are used
-    to select the desired one.}
+  \item{cutpoints}{A numeric vector of integers, or \code{NULL}.  For
+    diagnostic plots of prediction errors or forecast distributions, the
+    model will be re-fit with a separate MCMC run for each entry in
+    'cutpoints'.  Data up to each cutpoint will be included in the fit,
+    and one-step prediction errors for data after the cutpoint will be
+    computed.
+  }
 
   \item{get.season.name}{A function that can be used to infer the title
     of each seasonal plot.  It should take a single \code{\link{POSIXt}},
@@ -125,8 +103,64 @@
     }
   }
 
+  \item{inclusion.threshold}{An inclusion probability that individual
+    coefficients must exceed in order to be displayed when \code{what ==
+    "coefficients"}.  See the help file for
+    \code{\link[BoomSpikeSlab]{plot.lm.spike}.}}
+
+  \item{layout}{For controlling the layout of functions that generate
+    mutiple plots.}
+
+  \item{main}{Main title for the plot.}
+
+  \item{nseasons}{If there is only one seasonal component in the model,
+    this argument is ignored.  If there are multiple seasonal
+    components then \code{nseasons} and \code{season.duration} are used
+    to select the desired one.}
+
+  \item{number.of.variables}{If non-\code{NULL} this specifies the
+    number of coefficients to plot, taking precedence over
+    \code{inclusion.threshold}.  See \code{\link[BoomSpikeSlab]{plot.lm.spike}.}}
+
+  \item{same.scale}{Logical.  If \code{TRUE} then all the state
+    components will be plotted with the same scale on the vertical axis.
+    If \code{FALSE} then each component will get its own scale for the
+    vertical axis.}
+
+  \item{scale}{The scale on which to plot the state.  If the error
+    family is "logit" or "poisson" then the state can either be plotted
+    on the scale of the linear predictor (e.g. trend + seasonal +
+    regression) or the linear predictor can be passed through the link
+    function so as to plot the distribution of the conditional mean.}
+
+  \item{season.duration}{If there is only one seasonal component in the
+    model, this argument is ignored.  If there are multiple seasonal
+    components then \code{nseasons} and \code{season.duration} are used
+    to select the desired one.}
+
+  \item{show.actuals}{Logical.  If \code{TRUE} then actual values from
+    the fitted series will be shown on the plot.}
+
+  \item{style}{The desired plot style.  Partial matching is allowed, so
+    "dyn" would match "dynamic", for example.}
+
+  \item{time}{An optional vector of values to plot against.  If missing,
+    the default is to diagnose the time scale of the original time
+    series.}
+
+  \item{xlab}{Label for the horizontal axis.}
+
+  \item{ylab}{Label for the vertical axis.}
+
+  \item{ylim}{Limits for the vertical axis.  If \code{NULL} these will
+    be inferred from the state components and the \code{same.scale}
+    argument.  Otherwise all plots will be created with the same
+    \code{ylim} values.}
+
   \item{...}{Additional arguments to be passed to
-    \code{\link[Boom]{PlotDynamicDistribution}}}
+    \code{\link[Boom]{PlotDynamicDistribution}}, or
+    \code{\link[Boom]{TimeSeriesBoxplot}}.}
+
 }
 
 \details{

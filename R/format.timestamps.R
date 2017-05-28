@@ -56,6 +56,10 @@
     class(timestamps) <- class(regular.timestamps)
     ans$timestamp.mapping <- zoo::MATCH(timestamps, regular.timestamps)
   }
+  if (length(ans$regular.timestamps) > 2 * length(ans$timestamps)) {
+    warning("Expanding the time series to a regular interval resulted ",
+            "in very large amounts of missing data.")
+  }
   return(ans)
 }
 

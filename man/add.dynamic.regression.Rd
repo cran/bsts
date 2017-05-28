@@ -137,7 +137,7 @@ ss <- AddDynamicRegression(ss, y ~ x)
 ## In a real appliction you'd probably want more than 100
 ## iterations. See comment above about the random seed.
 model <- bsts(y, state.specification = ss, niter = 100, seed = 8675309)
-plot(model, "dynamic")
+plot(model, "dynamic", burn = 10)
 }
 
 \seealso{

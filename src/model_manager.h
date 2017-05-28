@@ -8,14 +8,47 @@
 namespace BOOM {
 namespace bsts {
 
-// The job of a ModelManager is to construct the BOOM models that bsts
-// uses for inference, and to provide any additional data that the
-// models need for tasks other than statistical inference.
+//===========================================================================
+// The code that computes out of sample one-step prediction errors is designed
+// for multi-threading.  This base class provides the interface for computing
+// the prediction errors.
+class HoldoutErrorSamplerImpl {
+ public:
+  virtual ~HoldoutErrorSamplerImpl() {}
+
+  // Simulate from the distribution of one-step prediction errors given data up
+  // to some cutpoint.  Child classes must be equipped with enough state to
+  // carry out this operation and store the results in an appropriate data
+  // structure.
+  virtual void sample_holdout_prediction_errors() = 0;
+};
+
+// A null class that can be used by model families that do not support one step
+// prediction errors (e.g. logit and Poisson).
+class NullErrorSampler : public HoldoutErrorSamplerImpl {
+ public:
+  void sample_holdout_prediction_errors() override {}
+};
+
+// A pimpl-based functor for computing out of sample prediction errors, with the
+// appropriate interface for submitting to a ThreadPool.
+class HoldoutErrorSampler {
+ public:
+  explicit HoldoutErrorSampler(HoldoutErrorSamplerImpl *impl) : impl_(impl) {}
+  void operator()() {impl_->sample_holdout_prediction_errors();}
+ private:
+  std::unique_ptr<HoldoutErrorSamplerImpl> impl_;
+};
+
+//===========================================================================
+// The job of a ModelManager is to construct the BOOM models that bsts uses for
+// inference, and to provide any additional data that the models need for tasks
+// other than statistical inference.
 //
-// The point of the ModelManager is to be an intermediary between the
-// calls in bsts.cc and the underlying BOOM code, so that R can pass
-// lists of data, priors, and model options formatted as expected by
-// the child ModelManager classes for specific model types.
+// The point of the ModelManager is to be an intermediary between the calls in
+// bsts.cc and the underlying BOOM code, so that R can pass lists of data,
+// priors, and model options formatted as expected by the child ModelManager
+// classes for specific model types.
 class ModelManager {
  public:
   ModelManager();
@@ -118,38 +151,32 @@ class ModelManager {
       SEXP r_burn,
       SEXP r_observed_data);
 
-  // Returns the one step ahead prediction errors from the training
-  // data.  In the typical case these were stored by the Kalman filter
-  // in the original model fit, so this function will only rarely be
-  // needed.
+  // Returns a HoldoutErrorSampler that holds a family specific implementation
+  // pointer that samples one-step prediction errors for data in r_bsts_object
+  // beyond observation number 'cutpoint'.  This object can be submitted to a
+  // ThreadPool for parallel processing.
   //
   // Args:
-  //   r_bsts_object: The R object created from a previous call to
-  //     bsts().
-  //   r_newdata: This can be R_NilValue, in which case the one step
-  //     prediction errors from the training data are computed.  Or it
-  //     can be a set of data formatted as in the r_data_list argument
-  //     to CreateModel.  If the latter, then it is assumed to be a
-  //     holdout data set that takes place immediately after the last
-  //     observation in the training data.
-  //   r_burn: An integer giving the desired number of MCMC iterations
-  //     to discard.
+  //   r_bsts_object: A bsts object fit to full data, for which one-step
+  //     prediction errors are desired.
+  //   cutpoint: An integer giving the index of the last data point in
+  //     r_bsts_object to be considered training data.  Observations after
+  //     'cutpoint' are considered holdout data.
+  //   prediction_error_output: A reference to a Matrix, with rows corresponding
+  //     to MCMC iterations, and columns to observations in the holdout data
+  //     set.  The matrix will be resized to appropriate dimensions by this
+  //     call.
   //
-  // Returns:
-  //    A matrix with rows corresponding to MCMC draws and columns
-  //    corresponding to time.  If a holdout data set is supplied then
-  //    the number of columns in the matrix matches the number of
-  //    observations in the holdout data.  Otherwise it matches the
-  //    number of observations in the training data.
-  virtual Matrix OneStepPredictionErrors(
+  // Note that one step prediction errors are only supported for Gaussian
+  // models.
+  virtual HoldoutErrorSampler CreateHoldoutSampler(
       SEXP r_bsts_object,
-      SEXP r_newdata,
-      SEXP r_burn);
+      int cutpoint,
+      BOOM::Matrix *prediction_error_output) = 0;
 
   // Time stamps are considered trivial if either (a) no time stamp information
   // was provided by the user, or (b) each time stamp contains one observation
   // and there are no gaps in the time series of observations.
-  ///////////////////////////////////
   bool TimestampsAreTrivial() const {
     return timestamps_are_trivial_;
   }
@@ -163,6 +190,8 @@ class ModelManager {
   int TimestampMapping(int i) const {
     return timestamps_are_trivial_ ? i : timestamp_mapping_[i] - 1;
   }
+
+  RNG & rng() {return rng_;}
 
  protected:
   // Checks to see if r_data_list has a field named timestamp.info, and use it
@@ -229,9 +258,7 @@ class ModelManager {
   // distribution.
   virtual Vector SimulateForecast(const Vector &final_state) = 0;
 
-  virtual int UnpackHoldoutData(SEXP r_holdout_data) = 0;
-  virtual Vector HoldoutDataOneStepHoldoutPredictionErrors(
-      const Vector &final_state) = 0;
+  RNG rng_;
 
   //----------------------------------------------------------------------
   // Time stamps are trivial the timestamp information was NULL, or if there is

@@ -137,8 +137,8 @@ bsts.mixed <- function(target.series,
     membership.fraction <- rep(1, nrow(predictors))
   }
 
-  stopifnot(length(which.coarse.interval) == length(contains.end))
-  stopifnot(length(which.coarse.interval) == length(membership.fraction))
+  stopifnot(length(which.coarse.interval) == length(contains.end),
+            length(which.coarse.interval) == length(membership.fraction))
   stopifnot(is.logical(contains.end))
   stopifnot(is.null(truth) || is.list(truth))
 

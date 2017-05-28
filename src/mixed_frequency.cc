@@ -38,6 +38,8 @@ using BOOM::NativeVectorListElement;
 using BOOM::RListIoManager;
 using BOOM::StandardDeviationListElement;
 using BOOM::ToBoomVector;
+using BOOM::ToIntVector;
+using BOOM::ToVectorBool;
 using BOOM::ToBoomMatrix;
 using BOOM::GlmCoefsListElement;
 
@@ -279,9 +281,10 @@ std::vector<Ptr<FineNowcastingData> > ComputeTrainingData(
     SEXP r_ends_interval) {
   const BOOM::Vector target_series(ToBoomVector(r_target_series));
   const BOOM::Mat predictors(ToBoomMatrix(r_predictors));
-  const int * which_coarse_interval(INTEGER(r_which_coarse_interval));
+  const std::vector<int> which_coarse_interval(ToIntVector(
+      r_which_coarse_interval));
   const BOOM::Vector membership_fraction(ToBoomVector(r_membership_fraction));
-  const int *ends_interval(LOGICAL(r_ends_interval));
+  const std::vector<bool> ends_interval(ToVectorBool(r_ends_interval));
 
   std::vector<Ptr<FineNowcastingData> > training_data;
   training_data.reserve(nrow(predictors));
@@ -340,7 +343,9 @@ extern "C" {
           r_which_coarse_interval,
           r_membership_fraction,
           r_contains_end);
-
+      if (data.empty()) {
+        return R_NilValue;
+      }
       int xdim = data[0]->regression_data()->xdim();
 
       Ptr<AggregatedStateSpaceRegression> model(

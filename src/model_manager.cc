@@ -21,8 +21,11 @@
 namespace BOOM {
 namespace bsts {
 
+// The model manager will be thread safe as long as it is created from the home
+// thread.
 ModelManager::ModelManager()
-    : timestamps_are_trivial_(true),
+    : rng_(seed_rng(GlobalRng::rng)),
+      timestamps_are_trivial_(true),
       number_of_time_points_(-1) {}
 
 ModelManager * ModelManager::Create(SEXP r_bsts_object) {  // NOLINT
@@ -169,46 +172,6 @@ Matrix ModelManager::Forecast(SEXP r_bsts_object,
       final_state = rmvn(state_mean, state_variance);
     }
     ans.row(i) = SimulateForecast(final_state);
-  }
-  return ans;
-}
-
-Matrix ModelManager::OneStepPredictionErrors(
-    SEXP r_bsts_object,
-    SEXP r_holdout_data,
-    SEXP r_burn) {
-  RListIoManager io_manager;
-  Vector final_state;
-  StateSpaceModelBase *model = CreateModel(R_NilValue,
-              getListElement(r_bsts_object, "state.specification"),
-              R_NilValue,
-              R_NilValue,
-              &final_state,
-              false,
-              false,
-              &io_manager);
-  int niter = Rf_asInteger(getListElement(r_bsts_object, "niter"));
-  int burn = std::max<int>(0, Rf_asInteger(r_burn));
-  io_manager.prepare_to_stream(r_bsts_object);
-  io_manager.advance(burn);
-  int iterations_after_burnin = niter - burn;
-
-  bool holdout = Rf_isNull(r_holdout_data);
-  int time_horizon = -1;
-  if (holdout) {
-    time_horizon = UnpackHoldoutData(r_holdout_data);
-  } else {
-    time_horizon = ToBoomVector(getListElement(
-        r_bsts_object, "original.series")).size();
-  }
-  Matrix ans(iterations_after_burnin, time_horizon);
-  for (int i = 0; i < iterations_after_burnin; ++i) {
-    io_manager.stream();
-    if (holdout) {
-      ans.row(i) = HoldoutDataOneStepHoldoutPredictionErrors(final_state);
-    } else {
-      ans.row(i) = model->one_step_prediction_errors();
-    }
   }
   return ans;
 }

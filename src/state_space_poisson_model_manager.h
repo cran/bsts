@@ -20,13 +20,16 @@ class StateSpacePoissonModelManager
       SEXP r_options,
       RListIoManager *io_manager) override;
 
+  HoldoutErrorSampler CreateHoldoutSampler(
+      SEXP r_bsts_object, int cutpoint, Matrix *err) override {
+    return HoldoutErrorSampler(new NullErrorSampler);
+  }
+
   void AddDataFromBstsObject(SEXP r_bsts_object) override;
   void AddDataFromList(SEXP r_data_list) override;
   int UnpackForecastData(SEXP r_prediction_data) override;
   Vector SimulateForecast(const Vector &final_state) override;
-  int UnpackHoldoutData(SEXP r_holdout_data) override;
-  Vector HoldoutDataOneStepHoldoutPredictionErrors(
-      const Vector &final_state) override;
+
   void SetPredictorDimension(int xdim);
   void AddData(const Vector &counts,
                const Vector &exposure,
@@ -39,7 +42,6 @@ class StateSpacePoissonModelManager
 
   Vector forecast_exposure_;
   Matrix forecast_predictors_;
-  Vector holdout_response_;
 };
 
 }  // namespace bsts

@@ -20,19 +20,26 @@ StateSpaceStudentRegressionModel * SSSMM::CreateObservationModel(
       SEXP r_prior,
       SEXP r_options,
       RListIoManager *io_manager) {
+  Matrix predictors;
+  Vector response;
+  std::vector<bool> response_is_observed;
   if (!Rf_isNull(r_data_list)) {
     // If we were passed data from R then use it to build the model.
     SEXP r_predictors = getListElement(r_data_list, "predictors");
+    if (Rf_inherits(r_data_list, "bsts")) {
+      SEXP r_response = getListElement(r_data_list, "original.series");
+      response = ToBoomVector(r_response);
+      response_is_observed = IsObserved(r_response);
+    } else {
+      response = ToBoomVector(getListElement(r_data_list, "response"));
+      response_is_observed = ToVectorBool(getListElement(
+          r_data_list, "response.is.observed"));
+    }
     bool regression = !Rf_isNull(r_predictors);
-    Vector response(ToBoomVector(getListElement(r_data_list, "response")));
-    // If there are no predictors then make an intercept.
-    Matrix predictors =
-        regression ?
-        ToBoomMatrix(r_predictors) :
+    predictors = regression ? ToBoomMatrix(r_predictors) :
         Matrix(response.size(), 1, 1.0);
-    std::vector<bool> response_is_observed(ToVectorBool(getListElement(
-        r_data_list, "response.is.observed")));
     UnpackTimestampInfo(r_data_list);
+
     if (TimestampsAreTrivial()) {
       model_.reset(new StateSpaceStudentRegressionModel(
           response, predictors, response_is_observed));
@@ -52,7 +59,7 @@ StateSpaceStudentRegressionModel * SSSMM::CreateObservationModel(
         data[TimestampMapping(i)]->add_data(observation);
       }
       for (int i = 0; i < NumberOfTimePoints(); ++i) {
-        if (data[i]->sample_size() == 0) {
+        if (data[i]->observed_sample_size() == 0) {
           data[i]->set_missing_status(Data::completely_missing);
         }
         model_->add_data(data[i]);
@@ -125,6 +132,50 @@ StateSpaceStudentRegressionModel * SSSMM::CreateObservationModel(
   return model_.get();
 }
 
+HoldoutErrorSampler SSSMM::CreateHoldoutSampler(
+    SEXP r_bsts_object,
+    int cutpoint,
+    Matrix *errors) {
+  RListIoManager io_manager;
+  Ptr<StateSpaceStudentRegressionModel> model =
+      static_cast<StateSpaceStudentRegressionModel *>(CreateModel(
+          R_NilValue,
+          getListElement(r_bsts_object, "state.specification"),
+          getListElement(r_bsts_object, "prior"),
+          getListElement(r_bsts_object, "model.options"),
+          nullptr,
+          false,
+          true,
+          &io_manager));
+  AddDataFromBstsObject(r_bsts_object);
+
+  std::vector<Ptr<StateSpace::AugmentedStudentRegressionData>> data =
+      model->dat();
+  model->clear_data();
+  for (int i = 0; i <= cutpoint; ++i) {
+    model->add_data(data[i]);
+  }
+  int holdout_sample_size = 0;
+  for (int i = cutpoint + 1; i < data.size(); ++i) {
+    holdout_sample_size += data[i]->total_sample_size();
+  }
+  Matrix holdout_predictors(holdout_sample_size,
+                            model->observation_model()->xdim());
+  Vector holdout_response(holdout_sample_size);
+  int index = 0;
+  for (int i = cutpoint + 1; i < data.size(); ++i) {
+    for (int j = 0; j < data[i]->total_sample_size(); ++j) {
+      holdout_predictors.row(index) = data[i]->regression_data(j).x();
+      holdout_response[index] = data[i]->regression_data(j).y();
+      ++index;
+    }
+  }
+  return HoldoutErrorSampler(new StateSpaceStudentHoldoutErrorSampler(
+      model, holdout_response, holdout_predictors,
+      Rf_asInteger(getListElement(r_bsts_object, "niter")),
+      errors));
+}
+
 void SSSMM::AddDataFromBstsObject(SEXP r_bsts_object) {
   SEXP r_response = getListElement(r_bsts_object, "original.series");
   Vector response = ToBoomVector(r_response);
@@ -152,24 +203,7 @@ int SSSMM::UnpackForecastData(SEXP r_prediction_data) {
 }
 
 Vector SSSMM::SimulateForecast(const Vector &final_state) {
-  return model_->simulate_forecast(forecast_predictors_,
-                                   final_state);
-}
-
-int SSSMM::UnpackHoldoutData(SEXP r_holdout_data) {
-  holdout_response_ = ToBoomVector(getListElement(r_holdout_data, "response"));
-  forecast_predictors_ = ExtractPredictors(
-      r_holdout_data, "predictors", holdout_response_.size());
-  return holdout_response_.size();
-}
-
-Vector SSSMM::HoldoutDataOneStepHoldoutPredictionErrors(
-    const Vector &final_state) {
-  return model_->one_step_holdout_prediction_errors(
-      GlobalRng::rng,
-      holdout_response_,
-      forecast_predictors_,
-      final_state);
+  return model_->simulate_forecast(rng(), forecast_predictors_, final_state);
 }
 
 void SSSMM::AddData(const Vector &response,

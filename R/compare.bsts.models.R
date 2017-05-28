@@ -50,10 +50,11 @@ CompareBstsModels <- function(model.list,
   opar$mar <- original.margins
   margins[1] <- 0
   par(mar = margins)
-  errors <- bsts.prediction.errors(model.list[[1]], burn = burn)
+  errors <- bsts.prediction.errors(model.list[[1]], burn = burn)$in.sample
   cumulative.errors <- matrix(nrow = number.of.models, ncol = ncol(errors))
   for (i in 1:number.of.models) {
-    prediction.errors <- bsts.prediction.errors(model.list[[i]], burn = burn)
+    prediction.errors <-
+      bsts.prediction.errors(model.list[[i]], burn = burn)$in.sample
     cumulative.errors[i, ] <- cumsum(abs(colMeans(prediction.errors)))
   }
   if (is.null(colors)) colors <- c("black", rainbow(number.of.models-1))

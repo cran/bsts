@@ -13,6 +13,12 @@
 #include "Models/StateSpace/StateSpaceModelBase.hpp"
 #include "cpputil/report_error.hpp"
 
+// TODO(stevescott): Remove this macro here and below, and switch to always-on
+// threading once b/37439694 is resolved.
+#ifdef STD_THREADS_OKAY
+#include "cpputil/ThreadTools.hpp"
+#endif
+
 extern "C" {
 using BOOM::Vector;
 using BOOM::Ptr;
@@ -178,33 +184,50 @@ SEXP analysis_common_r_predict_bsts_model_(
 // Args:
 //   r_bsts_object: The object on which the predictions are to be
 //     based, which was returned by the original call to bsts.
-//   r_holdout_data: This can be R_NilValue, in which case the one
-//     step prediction errors from the training data are computed.  Or
-//     it can be a set of data formatted as in the r_data_list
-//     argument to analysis_common_r_fit_bsts_model_.  If the latter,
-//     then it is assumed to be a holdout data set that takes place
-//     immediately after the last observation in the training data.
-//   r_burn: An integer giving the number of burn-in iterations to
-//     discard.  Negative numbers will be treated as zero.  Numbers
-//     greater than the number of MCMC iterations will raise an error.
+//   r_cutpoints: A set of integers ranging from 1 to
+//     bsts.object$number.of.time.points.  One bsts model run is needed for each
+//     cutpoint, using data up to that cutpoint.
 //
 // Returns:
-//    An R matrix with rows corresponding to MCMC draws and columns
-//    corresponding to time.  If a holdout data set is supplied then
-//    the number of columns in the matrix matches the number of
-//    observations in the holdout data.  Otherwise it matches the
-//    number of observations in the training data.
+//    A list of R matrices with rows corresponding to MCMC draws and columns
+//    corresponding to time.
 SEXP analysis_common_r_bsts_one_step_prediction_errors_(
     SEXP r_bsts_object,
-    SEXP r_holdout_data,
-    SEXP r_burn) {
+    SEXP r_cutpoints) {
   try {
-    std::unique_ptr<ModelManager> model_manager(
-        ModelManager::Create(r_bsts_object));
-    return BOOM::ToRMatrix(model_manager->OneStepPredictionErrors(
-        r_bsts_object,
-        r_holdout_data,
-        r_burn));
+    std::vector<int> cutpoints = BOOM::ToIntVector(r_cutpoints, true);
+    std::vector<BOOM::Matrix> prediction_errors(cutpoints.size());
+
+#ifdef STD_THREADS_OKAY
+    std::vector<std::future<void>> futures;
+    int desired_threads = std::min<int>(
+        cutpoints.size(), std::thread::hardware_concurrency() - 1);
+    BOOM::ThreadWorkerPool pool;
+    pool.add_threads(desired_threads);
+    for (int i = 0; i < cutpoints.size(); ++i) {
+      std::unique_ptr<ModelManager> model_manager(
+          ModelManager::Create(r_bsts_object));
+      futures.emplace_back(pool.submit(model_manager->CreateHoldoutSampler(
+          r_bsts_object, cutpoints[i], &prediction_errors[i])));
+    }
+    for (int i = 0; i < futures.size(); ++i) {
+      futures[i].get();
+    }
+#else
+    for (int i = 0; i < cutpoints.size(); ++i) {
+      std::unique_ptr<ModelManager> model_manager(
+          ModelManager::Create(r_bsts_object));
+      model_manager->CreateHoldoutSampler(
+          r_bsts_object, cutpoints[i], &prediction_errors[i])();
+    }
+#endif
+
+    BOOM::RMemoryProtector protector;
+    SEXP ans = protector.protect(Rf_allocVector(VECSXP, cutpoints.size()));
+    for (int i = 0; i < prediction_errors.size(); ++i) {
+      SET_VECTOR_ELT(ans, i, ToRMatrix(prediction_errors[i]));
+    }
+    return ans;
   } catch (std::exception &e) {
     BOOM::RInterface::handle_exception(e);
   } catch (...) {

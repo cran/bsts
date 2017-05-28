@@ -27,13 +27,22 @@ StateSpaceRegressionModel * SSRMF::CreateObservationModel(
     SEXP r_prior,
     SEXP r_options,
     RListIoManager *io_manager) {
-
+  Matrix predictors;
+  Vector response;
+  std::vector<bool> response_is_observed;
   if (!Rf_isNull(r_data_list)) {
-    // If we were passed data from R then use it to build the model.
-    Matrix predictors(ToBoomMatrix(getListElement(r_data_list, "predictors")));
-    Vector response(ToBoomVector(getListElement(r_data_list, "response")));
-    std::vector<bool> response_is_observed(ToVectorBool(getListElement(
-        r_data_list, "response.is.observed")));
+    if (Rf_inherits(r_data_list, "bsts")) {
+      predictors = ToBoomMatrix(getListElement(r_data_list, "predictors"));
+      SEXP r_response = getListElement(r_data_list, "original.series");
+      response = ToBoomVector(r_response);
+      response_is_observed = IsObserved(r_response);
+    } else {
+      // If we were passed data from R then use it to build the model.
+      predictors = ToBoomMatrix(getListElement(r_data_list, "predictors"));
+      response = ToBoomVector(getListElement(r_data_list, "response"));
+      response_is_observed = ToVectorBool(getListElement(
+          r_data_list, "response.is.observed"));
+    }
     UnpackTimestampInfo(r_data_list);
     if (TimestampsAreTrivial()) {
       model_.reset(new StateSpaceRegressionModel(
@@ -55,16 +64,15 @@ StateSpaceRegressionModel * SSRMF::CreateObservationModel(
         data[TimestampMapping(i)]->add_data(observation);
       }
       for (int i = 0; i < NumberOfTimePoints(); ++i) {
-        if (data[i]->sample_size() == 0) {
+        if (data[i]->observed_sample_size() == 0) {
           data[i]->set_missing_status(Data::completely_missing);
         }
-        model_->add_data(data[i]);
+        model_->add_multiplexed_data(data[i]);
       }
     }
   } else {
-    // If no data was passed from R then build the model from its
-    // default constructor.  We need to know the dimension of the
-    // predictors.
+    // No data was passed from R, so build the model from its default
+    // constructor.  We need to know the dimension of the predictors.
     if (predictor_dimension_ < 0) {
       report_error("If r_data_list is not passed, you must call "
                    "SetPredictorDimension before calling "
@@ -111,24 +119,7 @@ int SSRMF::UnpackForecastData(SEXP r_prediction_data) {
 }
 
 Vector SSRMF::SimulateForecast(const Vector &final_state) {
-  return model_->simulate_forecast(forecast_predictors_, final_state);
-}
-
-int SSRMF::UnpackHoldoutData(SEXP r_holdout_data) {
-  holdout_responses_ = ToBoomVector(getListElement(
-      r_holdout_data, "response"));
-  forecast_predictors_ = ToBoomMatrix(getListElement(
-      r_holdout_data, "predictors"));
-  if (nrow(forecast_predictors_) != holdout_responses_.size()) {
-    report_error("Data sizes do not align ");
-  }
-  return holdout_responses_.size();
-}
-
-Vector SSRMF::HoldoutDataOneStepHoldoutPredictionErrors(
-    const Vector &final_state) {
-  return model_->one_step_holdout_prediction_errors(
-      forecast_predictors_, holdout_responses_, final_state);
+  return model_->simulate_forecast(rng(), forecast_predictors_, final_state);
 }
 
 void SSRMF::SetRegressionSampler(SEXP r_regression_prior,
@@ -223,8 +214,67 @@ void StateSpaceRegressionModelManager::AddData(
     if (!response_is_observed[i]) {
       dp->set_missing_status(Data::partly_missing);
     }
-    model_->add_data(dp);
+    model_->add_regression_data(dp);
   }
+}
+
+namespace {
+typedef StateSpaceRegressionHoldoutErrorSampler ErrorSampler;
+}  // namespace
+
+void ErrorSampler::sample_holdout_prediction_errors() {
+  model_->sample_posterior();
+  errors_->resize(niter_, model_->time_dimension() + holdout_responses_.size());
+  for (int i = 0; i < niter_; ++i) {
+    model_->sample_posterior();
+    Vector all_errors = model_->one_step_prediction_errors();
+    all_errors.concat(model_->one_step_holdout_prediction_errors(
+        holdout_predictors_, holdout_responses_, model_->final_state()));
+    errors_->row(i) = all_errors;
+  }
+}
+
+HoldoutErrorSampler StateSpaceRegressionModelManager::CreateHoldoutSampler(
+    SEXP r_bsts_object,
+    int cutpoint,
+    Matrix *errors) {
+  RListIoManager io_manager;
+  Ptr<StateSpaceRegressionModel> model =
+      static_cast<StateSpaceRegressionModel *>(CreateModel(
+          R_NilValue,
+          getListElement(r_bsts_object, "state.specification"),
+          getListElement(r_bsts_object, "prior"),
+          getListElement(r_bsts_object, "model.options"),
+          nullptr,
+          false,
+          true,
+          &io_manager));
+  AddDataFromBstsObject(r_bsts_object);
+
+  std::vector<Ptr<StateSpace::MultiplexedRegressionData>> data = model->dat();
+  model->clear_data();
+  for (int i = 0; i <= cutpoint; ++i) {
+    model->add_multiplexed_data(data[i]);
+  }
+  int holdout_sample_size = 0;
+  for (int i = cutpoint + 1; i < data.size(); ++i) {
+    holdout_sample_size += data[i]->total_sample_size();
+  }
+  Matrix holdout_predictors(holdout_sample_size,
+                            model->observation_model()->xdim());
+  Vector holdout_response(holdout_sample_size);
+  int index = 0;
+  for (int i = cutpoint + 1; i < data.size(); ++i) {
+    for (int j = 0; j < data[i]->total_sample_size(); ++j) {
+      holdout_predictors.row(index) = data[i]->regression_data(j).x();
+      holdout_response[index] = data[i]->regression_data(j).y();
+      ++index;
+    }
+  }
+  return HoldoutErrorSampler(new ErrorSampler(
+      model, holdout_response, holdout_predictors,
+      Rf_asInteger(getListElement(r_bsts_object, "niter")),
+      errors));
 }
 
 }  // namespace bsts

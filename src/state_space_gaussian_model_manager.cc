@@ -27,8 +27,7 @@ StateSpaceModelBase * GaussianModelManagerBase::CreateModel(
       save_prediction_errors,
       io_manager);
 
-  // It is only possible to compute log likelihood under for Gaussian
-  // models.
+  // It is only possible to compute log likelihood for Gaussian models.
   io_manager->add_list_element(
       new BOOM::NativeUnivariateListElement(
           new LogLikelihoodCallback(model),
@@ -50,7 +49,11 @@ StateSpaceModel * StateSpaceModelManager::CreateObservationModel(
   // differently or we may want to substitute a different training
   // data set.
   if (!Rf_isNull(r_data_list)) {
-    AddDataFromList(r_data_list);
+    if (Rf_inherits(r_data_list, "bsts")) {
+      AddDataFromBstsObject(r_data_list);
+    } else {
+      AddDataFromList(r_data_list);
+    }
   }
 
   // If the model is begin created from scratch, then we need a prior
@@ -103,18 +106,7 @@ int StateSpaceModelManager::UnpackForecastData(SEXP r_prediction_data) {
 }
 
 Vector StateSpaceModelManager::SimulateForecast(const Vector &final_state) {
-  return model_->simulate_forecast(forecast_horizon_, final_state);
-}
-
-int StateSpaceModelManager::UnpackHoldoutData(SEXP r_holdout_data) {
-  holdout_data_ = ToBoomVector(getListElement(r_holdout_data, "response"));
-  return holdout_data_.size();
-}
-
-Vector StateSpaceModelManager::HoldoutDataOneStepHoldoutPredictionErrors(
-    const Vector &final_state) {
-  return model_->one_step_holdout_prediction_errors(holdout_data_,
-                                                    final_state);
+  return model_->simulate_forecast(rng(), forecast_horizon_, final_state);
 }
 
 void StateSpaceModelManager::AddData(
@@ -140,6 +132,63 @@ void StateSpaceModelManager::AddData(
       data[i]->set_missing_status(Data::completely_missing);
     }
     model_->add_data(data[i]);
+  }
+}
+
+HoldoutErrorSampler StateSpaceModelManager::CreateHoldoutSampler(
+    SEXP r_bsts_object,
+    int cutpoint,
+    Matrix *prediction_error_output) {
+  RListIoManager io_manager;
+  Ptr<StateSpaceModel> model = static_cast<StateSpaceModel *>(CreateModel(
+      R_NilValue,
+      getListElement(r_bsts_object, "state.specification"),
+      getListElement(r_bsts_object, "prior"),
+      getListElement(r_bsts_object, "model.options"),
+      nullptr,
+      false,
+      true,
+      &io_manager));
+  AddDataFromBstsObject(r_bsts_object);
+
+  std::vector<Ptr<StateSpace::MultiplexedDoubleData>> data = model->dat();
+  model_->clear_data();
+  for (int i = 0; i <= cutpoint; ++i) {
+    model_->add_data(data[i]);
+  }
+  Vector holdout_data;
+  for (int i = cutpoint + 1; i < data.size(); ++i) {
+    Ptr<StateSpace::MultiplexedDoubleData> data_point = data[i];
+    for (int j = 0; j < data[i]->total_sample_size(); ++j) {
+      holdout_data.push_back(data[i]->double_data(j).value());
+    }
+  }
+  int niter = Rf_asInteger(getListElement(r_bsts_object, "niter"));
+  return HoldoutErrorSampler(new StateSpaceModelPredictionErrorSampler(
+      model, holdout_data, niter, prediction_error_output));
+}
+
+
+StateSpaceModelPredictionErrorSampler::StateSpaceModelPredictionErrorSampler(
+    const Ptr<StateSpaceModel> &model,
+    const Vector &holdout_data,
+    int niter,
+    Matrix *errors)
+    : model_(model),
+      holdout_data_(holdout_data),
+      niter_(niter),
+      errors_(errors)
+{}
+
+void StateSpaceModelPredictionErrorSampler::sample_holdout_prediction_errors() {
+  model_->sample_posterior();
+  errors_->resize(niter_, model_->time_dimension() + holdout_data_.size());
+  for (int i = 0; i < niter_; ++i) {
+    model_->sample_posterior();
+    Vector error_sim = model_->one_step_prediction_errors();
+    error_sim.concat(model_->one_step_holdout_prediction_errors(
+        holdout_data_, model_->final_state()));
+    errors_->row(i) = error_sim;
   }
 }
 

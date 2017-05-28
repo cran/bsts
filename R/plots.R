@@ -351,49 +351,42 @@ PlotBstsState <- function(bsts.object, burn = SuggestBurn(.1, bsts.object),
 
 ###----------------------------------------------------------------------
 PlotBstsPredictionErrors <- function(bsts.object,
+                                     cutpoints = NULL,
                                      burn = SuggestBurn(.1, bsts.object),
-                                     time, style = c("dynamic", "boxplot"),
+                                     style = c("dynamic", "boxplot"),
+                                     xlab = "Time",
+                                     ylab = "",
+                                     main = "",
                                      ...) {
-  ## Creates a dynamic distribution plot of the one step ahead
-  ## prediction errors from 'bsts.object'.
-  ## Args:
-  ##   bsts.object:  An object of class 'bsts'.
-  ##   burn: The number of MCMC iterations to be discarded as burn-in.
-  ##   time: An optional vector of values to plot on the time axis.
-  ##   style: Either "dynamic", for dynamic distribution plots, or
-  ##     "boxplot", for box plots.  Partial matching is allowed, so
-  ##     "dyn" or "box" would work, for example.
-  ##   ...:  Extra arguments passed to PlotDynamicDistribution.
-  ## Returns:
-  ##   This function is called for its side effect, which is to
-  ##   produce a plot on the current graphics device.
-  stopifnot(inherits(bsts.object, "bsts"))
-  if (HasDuplicateTimestamps(bsts.object)) {
-    stop("The plot of one-step-ahead prediction errors does not work ",
-         "with duplicate time stamps.")
-  }
-  if (bsts.object$family %in% c("poisson", "logit")) {
-    stop("The plot of one-step-ahead prediction errors does not work ",
-         "with poisson and logit models.")
-  }
   style <- match.arg(style)
-  if (missing(time)) {
-    time <- bsts.object$timestamp.info$timestamps
-  }
-
-  errors <- bsts.prediction.errors(bsts.object, burn = burn)
-  if (style == "dynamic") {
-    PlotDynamicDistribution(errors, timestamps = time, ...)
-  } else {
-    TimeSeriesBoxplot(errors, time = time, ...)
-  }
+  stopifnot(inherits(bsts.object, "bsts"))
+  prediction.errors = bsts.prediction.errors(bsts.object,
+                                             cutpoints = cutpoints,
+                                             burn = burn)
+  timestamps <- attributes(prediction.errors)$timestamps
+  cutpoints <-  timestamps[attributes(prediction.errors)$cutpoints]
+  CompareDynamicDistributions(
+      prediction.errors,
+      timestamps = timestamps,
+      style = style,
+      xlab = xlab,
+      ylab = ylab,
+      frame.labels = c(as.character(cutpoints), "in.sample"),
+      main = main,
+      actuals = NULL,
+      vertical.cuts = c(cutpoints, NA),
+      ...)
+  return(invisible(prediction.errors))
 }
 
 ###----------------------------------------------------------------------
 PlotBstsForecastDistribution <- function(bsts.object,
+                                         cutpoints = NULL,
                                          burn = SuggestBurn(.1, bsts.object),
-                                         time,
                                          style = c("dynamic", "boxplot"),
+                                         xlab = "Time",
+                                         ylab = "",
+                                         main = "",
                                          show.actuals = TRUE,
                                          col.actuals = "blue",
                                          ...) {
@@ -403,7 +396,6 @@ PlotBstsForecastDistribution <- function(bsts.object,
   ## Args:
   ##   bsts.object:  An object of class 'bsts'.
   ##   burn: The number of MCMC iterations to be discarded as burn-in.
-  ##   time: An optional vector of values to plot on the time axis.
   ##   style: Either "dynamic", for dynamic distribution plots, or
   ##     "boxplot", for box plots.  Partial matching is allowed, so
   ##     "dyn" or "box" would work, for example.
@@ -418,21 +410,37 @@ PlotBstsForecastDistribution <- function(bsts.object,
   ##   invisible NULL
   stopifnot(inherits(bsts.object, "bsts"))
   style = match.arg(style)
-  if (missing(time)) {
-    time <- bsts.object$timestamp.info$timestamps
+  errors <- bsts.prediction.errors(bsts.object,
+                                   cutpoints = cutpoints,
+                                   burn = burn)
+  forecast <- errors
+  if (length(forecast) == 0) {
+    stop("No forecast errors are available.")
   }
-  errors <- bsts.prediction.errors(bsts.object, burn = burn)
-  forecast <- t(as.numeric(bsts.object$original.series) - t(errors))
-  if (style == "dynamic") {
-    PlotDynamicDistribution(forecast, timestamps = time, ...)
-  } else {
-    TimeSeriesBoxplot(forecast, time = time, ...)
+  for (i in 1:length(forecast)) {
+    forecast[[i]] <-
+        t(as.numeric(bsts.object$original.series) - t(forecast[[i]]))
   }
-
+  timestamps <- attributes(errors)$timestamps
+  cutpoints <- timestamps[attributes(errors)$cutpoints]
   if (show.actuals) {
-    points(time, bsts.object$original.series, col = col.actuals, ...)
+    actuals <- bsts.object$original.series
+  } else {
+    actuals <- NULL
   }
-  return(invisible(NULL))
+  CompareDynamicDistributions(
+      forecast,
+      timestamps = timestamps,
+      style = style,
+      xlab = xlab,
+      ylab = ylab,
+      main = main,
+      frame.labels = c(as.character(cutpoints), "in.sample"),
+      actuals = actuals,
+      vertical.cuts = c(cutpoints, NA),
+      col.actuals = col.actuals,
+      ...)
+  return(invisible(forecast))
 }
 
 ###----------------------------------------------------------------------
