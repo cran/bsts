@@ -1,5 +1,5 @@
 % Copyright 2011 Google Inc. All Rights Reserved.
-% Author: stevescott@google.com (Steve Scott)
+% Author: steve.the.bayesian@gmail.com (Steve Scott)
 
 \name{plot.bsts.prediction}
 \title{Plot predictions from Bayesian structural time series}
@@ -11,19 +11,19 @@
 
 \usage{
   \method{plot}{bsts.prediction}(x,
-                                 y = NULL,
-                                 burn = 0,
-                                 plot.original = TRUE,
-                                 median.color = "blue",
-                                 median.type = 1,
-                                 median.width = 3,
-                                 interval.quantiles = c(.025, .975),
-                                 interval.color = "green",
-                                 interval.type = 2,
-                                 interval.width = 2,
-                                 style = c("dynamic", "boxplot"),
-                                 ylim = NULL,
-                                 ...)
+     y = NULL,
+     burn = 0,
+     plot.original = TRUE,
+     median.color = "blue",
+     median.type = 1,
+     median.width = 3,
+     interval.quantiles = c(.025, .975),
+     interval.color = "green",
+     interval.type = 2,
+     interval.width = 2,
+     style = c("dynamic", "boxplot"),
+     ylim = NULL,
+     ...)
 }
 
 \arguments{

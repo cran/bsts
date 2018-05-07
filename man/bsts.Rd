@@ -1,5 +1,18 @@
 % Copyright 2011 Google Inc. All Rights Reserved.
-% Author: stevescott@google.com (Steve Scott)
+%
+% This library is free software; you can redistribute it and/or
+% modify it under the terms of the GNU Lesser General Public
+% License as published by the Free Software Foundation; either
+% version 2.1 of the License, or (at your option) any later version.
+%
+% This library is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+% Lesser General Public License for more details.
+%
+% You should have received a copy of the GNU Lesser General Public
+% License along with this library; if not, write to the Free Software
+% Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA
 
 \alias{bsts}
 \name{bsts}
@@ -64,12 +77,6 @@ bsts(formula,
      model.options = BstsOptions(),
      timestamps = NULL,
      seed = NULL,
-### Deprecated arguments
-     save.state.contributions,
-     save.prediction.errors,
-     bma.method,
-     oda.options,
-### End of deprecated arguments
      ...)
 }
 
@@ -80,7 +87,8 @@ bsts(formula,
 
     If no regressors are desired then the formula can be replaced by a
     numeric vector giving the time series to be modeled.  Missing values
-    are not allowed.
+    are not allowed in predictors, but they are allowed in the response
+    variable.
 
     If the response variable is of class \code{\link[zoo]{zoo}},
     \code{\link[xts]{xts}}, or \code{\link{ts}}, then the time series
@@ -154,59 +162,10 @@ bsts(formula,
     C++ code.  If \code{NULL} then the seed will be set using the
     clock.}
 
-  \item{save.state.contributions}{
-    \bold{ ***DEPRECATED*** Please use BstsOptions instead.}
-    Logical.  If \code{TRUE} then a 3-way
-    array named \code{state.contributions} will be stored in the
-    returned object.  The indices correspond to MCMC iteration, state
-    model number, and time.  Setting \code{save.state.contributions} to
-    \code{FALSE} yields a smaller object, but \code{plot} will not be
-    able to plot the the "state", "components", or "residuals" for the
-    fitted model.}
-
-  \item{save.prediction.errors}{
-    \bold{ ***DEPRECATED*** Please use BstsOptions instead.}
-    Logical.  If \code{TRUE} then a matrix
-    named \code{one.step.prediction.errors} will be saved as part of the
-    model object.  The rows of the matrix represent MCMC iterations, and
-    the columns represent time.  The matrix entries are the
-    one-step-ahead prediction errors from the Kalman filter.  }
-
-  \item{bma.method}{
-    \bold{ ***DEPRECATED*** Please use BstsOptions instead.}
-    If the model contains a regression component, this
-    argument specifies the method to use for Bayesian model averaging.
-    "SSVS" is stochastic search variable selection, which is the classic
-    approach from George and McCulloch (1997).  "ODA" is orthoganal data
-    augmentation, from Ghosh and Clyde (2011).  It adds a set of latent
-    observations that make the X^TX matrix diagonal, vastly simplifying
-    complete data MCMC for model selection.}
-
-  \item{oda.options}{
-    \bold{ ***DEPRECATED*** Please use BstsOptions instead.}
-    If bma.method == "ODA" then these are some options
-    for fine tuning the ODA algorithm.
-    \itemize{
-
-      \item \code{fallback.probability}: Each MCMC iteration will use
-      SSVS instead of ODA with this probability.  In cases where
-      the latent data have high leverage, ODA mixing can suffer.
-      Mixing in a few SSVS steps can help keep an errant algorithm
-      on track.
-
-      \item \code{eigenvalue.fudge.factor}: The latent X's will be
-      chosen so that the complete data X'X matrix (after scaling) is a
-      constant diagonal matrix equal to the largest eigenvalue of the
-      observed (scaled) X'X times (1 + eigenvalue.fudge.factor).  This
-      should be a small positive number.
-    }
-  }
-
-
-
   \item{...}{ Extra arguments to be passed to
     \code{\link[BoomSpikeSlab]{SpikeSlabPrior}} (see the entry for the
-    \code{prior} argument, above).}  }
+    \code{prior} argument, above).}
+}
 
 \value{
   An object of class \code{\link{bsts}} which is a list with the
@@ -270,7 +229,7 @@ bsts(formula,
 }
 
 \author{
-  Steven L. Scott \email{stevescott@google.com}
+  Steven L. Scott  \email{steve.the.bayesian@gmail.com}
 }
 
 \seealso{
@@ -368,7 +327,7 @@ bsts(formula,
   predictors <- matrix(rnorm(total.sample.size * 2), ncol = 2)
   colnames(predictors) <- c("X1", "X2")
   coefficients <- c(-10, 10)
-  regression <- as.numeric(predictors %*% coefficients)
+  regression <- as.numeric(predictors \%*\% coefficients)
   y.hat <- rep(trend, sample.size.per.time.point) + regression
   y <- rnorm(length(y.hat), y.hat, sigma.obs)
 
@@ -385,6 +344,20 @@ bsts(formula,
   plot(model)
   plot(model, "components")
 }
+
+## Example 8: Non-Gaussian data
+## Poisson counts of shark attacks in Florida.
+data(shark)
+logshark <- log1p(shark$Attacks)
+ss.level <- AddLocalLevel(list(), y = logshark)
+model <- bsts(shark$Attacks, ss.level, niter = 500,
+              ping = 250, family = "poisson", seed = 8675309)
+
+## Poisson data can have an 'exposure' as the second column of a
+## two-column matrix.
+model <- bsts(cbind(shark$Attacks, shark$Population / 1000),
+              state.specification = ss.level, niter = 500, 
+              family = "poisson", ping = 250, seed = 8675309)
 
 }
 \keyword{models}

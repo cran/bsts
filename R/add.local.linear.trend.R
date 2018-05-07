@@ -1,5 +1,18 @@
-# Copyright 2011 Google Inc. All Rights Reserved.
-# Author: stevescott@google.com (Steve Scott)
+# Copyright 2011 Google LLC. All Rights Reserved.
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA
 
 AddLocalLinearTrend <- function (state.specification = NULL,
                                  y,
@@ -40,8 +53,9 @@ AddLocalLinearTrend <- function (state.specification = NULL,
 
   if (!missing(y)) {
     stopifnot(is.numeric(y))
-    sdy <- sd(as.numeric(y), na.rm = TRUE)
-    initial.y <- y[1]
+    observed.y <- as.numeric(y[!is.na(y)])
+    sdy <- sd(observed.y, na.rm = TRUE)
+    initial.y <- observed.y[1]
   }
 
   if (is.null(level.sigma.prior)) {
@@ -59,11 +73,21 @@ AddLocalLinearTrend <- function (state.specification = NULL,
   }
 
   if (is.null(initial.level.prior)) {
+    ## The mean of the initial level is the first observation.
     initial.level.prior <- NormalPrior(initial.y, sdy);
   }
 
   if (is.null(initial.slope.prior)) {
-    initial.slope.prior <- NormalPrior(0, sdy);
+    if (!missing(y)) {
+      ## If y is actually provided, then set the mean of the initial slope to
+      ## the slope of a line connecting the first and last points of y.
+      final.y <- tail(as.numeric(observed.y), 1)
+      initial.slope.mean <- (final.y - initial.y) / length(y)
+    } else {
+      ## If y is missing set the mean of the initial slope to zero.
+      initial.slope.mean <- 0
+    }
+    initial.slope.prior <- NormalPrior(initial.slope.mean, sdy);
   }
 
   llt <- list(name = "trend",

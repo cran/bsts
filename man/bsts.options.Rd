@@ -16,7 +16,8 @@ BstsOptions(save.state.contributions = TRUE,
             oda.options = list(
                 fallback.probability = 0.0,
                 eigenvalue.fudge.factor = 0.01),
-            timeout.seconds = Inf)
+            timeout.seconds = Inf,
+            save.full.state = FALSE)
 
 }
 
@@ -65,6 +66,13 @@ BstsOptions(save.state.contributions = TRUE,
     allowed to run.  If the timeout is exceeded the returned object will
     be truncated to the final draw that took place before the timeout
     occurred, as if that had been the requested number of iterations.}
+
+  \item{save.full.state}{Logical.  If \code{TRUE} then the full
+    distribution of the state vector will be preserved.  It will be
+    stored in the model under the name \code{full.state}, which is a
+    3-way array with dimenions corresponding to MCMC iteration, state
+    dimension, and time.}
+
 }
 
 \value{
@@ -73,7 +81,7 @@ BstsOptions(save.state.contributions = TRUE,
 }
 
 \author{
-  Steven L. Scott \email{stevescott@google.com}
+  Steven L. Scott \email{steve.the.bayesian@gmail.com}
 }
 
 \keyword{chron}

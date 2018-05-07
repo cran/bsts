@@ -1,5 +1,18 @@
 % Copyright 2011 Google Inc. All Rights Reserved.
-% Author: stevescott@google.com (Steve Scott)
+%
+% This library is free software; you can redistribute it and/or
+% modify it under the terms of the GNU Lesser General Public
+% License as published by the Free Software Foundation; either
+% version 2.1 of the License, or (at your option) any later version.
+%
+% This library is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+% Lesser General Public License for more details.
+%
+% You should have received a copy of the GNU Lesser General Public
+% License along with this library; if not, write to the Free Software
+% Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA
 
 \name{plot.bsts}
 \title{Plotting functions for Bayesian structural time series}
@@ -14,6 +27,7 @@
 \alias{PlotDynamicRegression}
 \alias{PlotBstsForecastDistribution}
 \alias{PlotSeasonalEffect}
+\alias{PlotMonthlyAnnualCycle}
 
 \description{Functions to plot the results of a model fit using
   \code{\link{bsts}}.}
@@ -22,28 +36,44 @@
   \method{plot}{bsts}(x, y = c("state", "components", "residuals",
               "coefficients", "prediction.errors",
               "forecast.distribution",
-              "predictors", "size", "dynamic", "seasonal", "help"),
+              "predictors", "size", "dynamic", "seasonal", "monthly",
+              "help"),
       ...)
 
   PlotBstsCoefficients(bsts.object, burn = SuggestBurn(.1, bsts.object),
                        inclusion.threshold = 0, number.of.variables = NULL, ...)
-  PlotBstsComponents(bsts.object, burn = SuggestBurn(.1, bsts.object),
-                       time, same.scale = TRUE,
-                       layout = c("square", "horizontal", "vertical"),
-                       style = c("dynamic", "boxplot"),
-                       ylim = NULL, ...)
-  PlotDynamicRegression(bsts.object, burn = SuggestBurn(.1, bsts.object),
-                        time = NULL, style = c("dynamic", "boxplot"),
+
+  PlotBstsComponents(bsts.object,
+                     burn = SuggestBurn(.1, bsts.object),
+                     time,
+                     same.scale = TRUE,
+                     layout = c("square", "horizontal", "vertical"),
+                     style = c("dynamic", "boxplot"),
+                     ylim = NULL,
+                     components = 1:length(bsts.object$state.specification),
+                     ...)
+
+  PlotDynamicRegression(bsts.object,
+                        burn = SuggestBurn(.1, bsts.object),
+                        time = NULL,
+                        same.scale = FALSE,
+                        style = c("dynamic", "boxplot"),
                         layout = c("square", "horizontal", "vertical"),
+                        ylim = NULL,
+                        zero.width = 2,
+                        zero.color = "green",
                         ...)
+
   PlotBstsState(bsts.object, burn = SuggestBurn(.1, bsts.object),
                        time, show.actuals = TRUE,
                        style = c("dynamic", "boxplot"),
                        scale = c("linear", "mean"),
                        ylim = NULL,
                        ...)
+
   PlotBstsResiduals(bsts.object, burn = SuggestBurn(.1, bsts.object),
-                       time, style = c("dynamic", "boxplot"), ...)
+                       time, style = c("dynamic", "boxplot"), means =
+                       TRUE, ...)
 
   PlotBstsPredictionErrors(bsts.object, cutpoints = NULL,
                            burn = SuggestBurn(.1, bsts.object),
@@ -63,8 +93,12 @@
 
   PlotBstsSize(bsts.object, burn = SuggestBurn(.1, bsts.object), style =
                        c("histogram", "ts"), ...)
+
   PlotSeasonalEffect(bsts.object, nseasons = 7, season.duration = 1,
                      same.scale = TRUE, ylim = NULL, get.season.name = NULL,
+                     burn = SuggestBurn(.1, bsts.object),  ...)
+
+  PlotMonthlyAnnualCycle(bsts.object, ylim = NULL, same.scale = TRUE,
                      burn = SuggestBurn(.1, bsts.object),  ...)
 }
 
@@ -80,6 +114,10 @@
 
   \item{col.actuals}{The color to use for the actual data when comparing
     actuals vs forecasts.}
+
+  \item{components}{A numeric vector indicating which components to
+    plot. Component indices correspond to elements of the state
+    specification that was used to build the bsts model being plotted.}
 
   \item{cutpoints}{A numeric vector of integers, or \code{NULL}.  For
     diagnostic plots of prediction errors or forecast distributions, the
@@ -113,6 +151,10 @@
 
   \item{main}{Main title for the plot.}
 
+  \item{means}{Logical.  If TRUE then the mean of each residual is
+    plotted as a blue dot.  If false only the distribution of the
+    residuals is plotted.}
+  
   \item{nseasons}{If there is only one seasonal component in the model,
     this argument is ignored.  If there are multiple seasonal
     components then \code{nseasons} and \code{season.duration} are used
@@ -157,6 +199,12 @@
     argument.  Otherwise all plots will be created with the same
     \code{ylim} values.}
 
+  \item{zero.width}{A numerical value for the width of the reference
+    line at zero.  If \code{NULL} then the line will be omitted.}
+
+  \item{zero.color}{A color for the width of the reference line at zero.
+    If \code{NULL} then the line will be omitted.}
+  
   \item{...}{Additional arguments to be passed to
     \code{\link[Boom]{PlotDynamicDistribution}}, or
     \code{\link[Boom]{TimeSeriesBoxplot}}.}
@@ -186,7 +234,12 @@
   predictors included in the model.
 
   \code{\link{PlotSeasonalEffect}} generates an array of plots showing
-  how the distibution of the seasonal effect changes, for each season.
+  how the distibution of the seasonal effect changes, for each season,
+  for models that include a seasonal state component.
+
+  \code{\link{PlotMonthlyAnnualCycle}} produces an array of plots much
+  like \code{\link{PlotSeasonalEffect}}, for models that include a
+  \code{\link{MonthlyAnnualCycle}} state component.
 }
 
 \value{

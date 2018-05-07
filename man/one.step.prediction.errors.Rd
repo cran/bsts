@@ -1,5 +1,5 @@
 % Copyright 2011 Google Inc. All Rights Reserved.
-% Author: stevescott@google.com (Steve Scott)
+% Author: steve.the.bayesian@gmail.com (Steve Scott)
 
 \name{one.step.prediction.errors}
 \alias{bsts.prediction.errors}
@@ -72,7 +72,7 @@ bsts.prediction.errors(bsts.object,
 }
 
 \author{
-  Steven L. Scott \email{stevescott@google.com}
+  Steven L. Scott \email{steve.the.bayesian@gmail.com}
 }
 
 \seealso{
@@ -89,7 +89,13 @@ bsts.prediction.errors(bsts.object,
   y <- log(AirPassengers)
   ss <- AddLocalLinearTrend(list(), y)
   ss <- AddSeasonal(ss, y, nseasons = 12)
+
+\dontrun{
   model <- bsts(y, state.specification = ss, niter = 500)
+}
+\dontshow{
+  model <- bsts(y, state.specification = ss, niter = 200)
+}
   errors <- bsts.prediction.errors(model, burn = 100)
   PlotDynamicDistribution(errors$in.sample)
 
