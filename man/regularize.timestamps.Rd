@@ -47,7 +47,6 @@
 }
 
 \examples{
-  library(bsts)
   first <- as.POSIXct("2015-04-19 08:00:04")
   monthly <- seq(from = first, length.out = 24, by = "month")
   skip.one <- monthly[-8]

@@ -16,8 +16,9 @@
 
 #include <sstream>
 
+#include "create_state_model.h"
+
 #include "r_interface/boom_r_tools.hpp"
-#include "r_interface/create_state_model.hpp"
 #include "r_interface/handle_exception.hpp"
 #include "r_interface/list_io.hpp"
 #include "r_interface/print_R_timestamp.hpp"
@@ -36,8 +37,6 @@
 
 // BOOM Linear algebra
 using BOOM::Vector;
-using BOOM::Mat;
-using BOOM::Spd;
 
 // Misc. BOOM
 using BOOM::AggregatedStateSpaceRegression;
@@ -69,11 +68,11 @@ class StateContributionCallback : public BOOM::MatrixIoCallback {
  public:
   explicit StateContributionCallback(BOOM::ScalarStateSpaceModelBase *model)
       : model_(model) {}
-  int nrow() const override { return model_->nstate(); }
+  int nrow() const override { return model_->number_of_state_models(); }
   int ncol() const override { return model_->time_dimension(); }
-  BOOM::Mat get_matrix() const override {
-    BOOM::Mat ans(nrow(), ncol());
-    for (int state = 0; state < model_->nstate(); ++state) {
+  BOOM::Matrix get_matrix() const override {
+    BOOM::Matrix ans(nrow(), ncol());
+    for (int state = 0; state < model_->number_of_state_models(); ++state) {
       ans.row(state) = model_->state_contribution(state);
     }
     return ans;
@@ -150,7 +149,7 @@ void AddRegressionPriorAndSetSampler(
 
     SEXP r_state = getListElement(r_truth, "state");
     if (r_state != R_NilValue) {
-      Mat state = ToBoomMatrix(r_state);
+      BOOM::Matrix state = ToBoomMatrix(r_state);
       model->permanently_set_state(state);
     }
   }
@@ -204,12 +203,13 @@ RListIoManager SpecifyModel(const Ptr<AggregatedStateSpaceRegression> &model,
       new StandardDeviationListElement(model->regression_model()->Sigsq_prm(),
                                        "sigma.obs"));
 
-  BOOM::RInterface::StateModelFactory factory(&io_manager, model.get());
-  factory.AddState(state_specification);
+  BOOM::bsts::StateModelFactory factory(&io_manager);
+  factory.AddState(model.get(), state_specification);
 
-  BOOM::RInterface::StateModelFactory augmented_factory(
-      &io_manager, augmented_model.get());
-  augmented_factory.AddState(state_specification, "augmented_");
+  BOOM::bsts::StateModelFactory augmented_factory(&io_manager);
+  augmented_factory.AddState(augmented_model.get(),
+                             state_specification,
+                             "augmented_");
 
   AddRegressionPriorAndSetSampler(model, regression_prior, r_truth);
   model->set_method(
@@ -222,8 +222,9 @@ RListIoManager SpecifyModel(const Ptr<AggregatedStateSpaceRegression> &model,
 
   // We need to add final.state to io_manager last,
   // because we need to know how big the state vector is.
-  factory.SaveFinalState(final_state);
-  augmented_factory.SaveFinalState(augmented_final_state,
+  factory.SaveFinalState(model.get(), final_state);
+  augmented_factory.SaveFinalState(augmented_model.get(),
+                                   augmented_final_state,
                                    "augmented.final.state");
 
   if (save_state_history) {
@@ -268,7 +269,7 @@ RListIoManager SpecifyModel(const Ptr<AggregatedStateSpaceRegression> &model,
 void TranscribeResponseData(const Ptr<AggregatedStateSpaceRegression> &model,
                             const Ptr<StateSpaceModel> &augmented_model,
                             RErrorReporter *error_reporter) {
-  const Mat &state(model->state());
+  const BOOM::Matrix &state(model->state());
   std::vector<Ptr<BOOM::StateSpace::MultiplexedDoubleData> > &data(
       augmented_model->dat());
   int next_to_last_row = nrow(state) - 2;
@@ -295,7 +296,7 @@ std::vector<Ptr<FineNowcastingData> > ComputeTrainingData(
     SEXP r_membership_fraction,
     SEXP r_ends_interval) {
   const BOOM::Vector target_series(ToBoomVector(r_target_series));
-  const BOOM::Mat predictors(ToBoomMatrix(r_predictors));
+  const BOOM::Matrix predictors(ToBoomMatrix(r_predictors));
   const std::vector<int> which_coarse_interval(ToIntVector(
       r_which_coarse_interval));
   const BOOM::Vector membership_fraction(ToBoomVector(r_membership_fraction));

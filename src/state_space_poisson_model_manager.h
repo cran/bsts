@@ -26,18 +26,17 @@ namespace BOOM {
 namespace bsts {
 
 class StateSpacePoissonModelManager
-    : public ModelManager {
+    : public ScalarModelManager {
  public:
   StateSpacePoissonModelManager();
 
-  StateSpacePoissonModel * CreateObservationModel(
+  StateSpacePoissonModel * CreateBareModel(
       SEXP r_data_list,
       SEXP r_prior,
       SEXP r_options,
       RListIoManager *io_manager) override;
 
-  HoldoutErrorSampler CreateHoldoutSampler(
-      SEXP r_bsts_object, int cutpoint, Matrix *err) override {
+  HoldoutErrorSampler CreateHoldoutSampler(SEXP, int, bool, Matrix *) override {
     return HoldoutErrorSampler(new NullErrorSampler);
   }
 

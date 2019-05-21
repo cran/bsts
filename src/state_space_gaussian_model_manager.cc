@@ -29,14 +29,12 @@ ScalarStateSpaceModelBase * GaussianModelManagerBase::CreateModel(
     SEXP r_state_specification,
     SEXP r_prior,
     SEXP r_options,
-    Vector *final_state,
     RListIoManager *io_manager) {
-  ScalarStateSpaceModelBase *model = ModelManager::CreateModel(
+  ScalarStateSpaceModelBase *model = ScalarModelManager::CreateModel(
       r_data_list,
       r_state_specification,
       r_prior,
       r_options,
-      final_state,
       io_manager);
 
   // It is only possible to compute log likelihood for Gaussian models.
@@ -48,7 +46,7 @@ ScalarStateSpaceModelBase * GaussianModelManagerBase::CreateModel(
   return model;
 }
 
-StateSpaceModel * StateSpaceModelManager::CreateObservationModel(
+StateSpaceModel * StateSpaceModelManager::CreateBareModel(
     SEXP r_data_list,
     SEXP r_prior,
     SEXP r_options,
@@ -155,6 +153,7 @@ void StateSpaceModelManager::AddData(
 HoldoutErrorSampler StateSpaceModelManager::CreateHoldoutSampler(
     SEXP r_bsts_object,
     int cutpoint,
+    bool standardize,
     Matrix *prediction_error_output) {
   RListIoManager io_manager;
   Ptr<StateSpaceModel> model = static_cast<StateSpaceModel *>(CreateModel(
@@ -162,7 +161,6 @@ HoldoutErrorSampler StateSpaceModelManager::CreateHoldoutSampler(
       getListElement(r_bsts_object, "state.specification"),
       getListElement(r_bsts_object, "prior"),
       getListElement(r_bsts_object, "model.options"),
-      nullptr,
       &io_manager));
   AddDataFromBstsObject(r_bsts_object);
 
@@ -180,7 +178,7 @@ HoldoutErrorSampler StateSpaceModelManager::CreateHoldoutSampler(
   }
   int niter = Rf_asInteger(getListElement(r_bsts_object, "niter"));
   return HoldoutErrorSampler(new StateSpaceModelPredictionErrorSampler(
-      model, holdout_data, niter, prediction_error_output));
+      model, holdout_data, niter, standardize, prediction_error_output));
 }
 
 
@@ -188,10 +186,12 @@ StateSpaceModelPredictionErrorSampler::StateSpaceModelPredictionErrorSampler(
     const Ptr<StateSpaceModel> &model,
     const Vector &holdout_data,
     int niter,
+    bool standardize,
     Matrix *errors)
     : model_(model),
       holdout_data_(holdout_data),
       niter_(niter),
+      standardize_(standardize),
       errors_(errors)
 {}
 
@@ -202,7 +202,7 @@ void StateSpaceModelPredictionErrorSampler::sample_holdout_prediction_errors() {
     model_->sample_posterior();
     Vector error_sim = model_->one_step_prediction_errors();
     error_sim.concat(model_->one_step_holdout_prediction_errors(
-        holdout_data_, model_->final_state()));
+        holdout_data_, model_->final_state(), standardize_));
     errors_->row(i) = error_sim;
   }
 }

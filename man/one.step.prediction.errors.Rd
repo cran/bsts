@@ -13,7 +13,8 @@
 \usage{
 bsts.prediction.errors(bsts.object,
                        cutpoints = NULL,
-                       burn = SuggestBurn(.1, bsts.object))
+                       burn = SuggestBurn(.1, bsts.object),
+                       standardize = FALSE)
 }
 
 \arguments{
@@ -32,6 +33,11 @@ bsts.prediction.errors(bsts.object,
   \item{burn}{An integer giving the number of MCMC iterations to discard
     as burn-in.  If \code{burn <= 0} then no burn-in sample will be
     discarded.}
+
+  \item{standardize}{ Logical.  If \code{TRUE} then the prediction
+    errors are divided by the square root of the one-step-ahead forecast
+    variance.  If \code{FALSE} the raw errors are returned.  }
+
 }
 
 \value{
@@ -79,7 +85,7 @@ bsts.prediction.errors(bsts.object,
   \code{\link{bsts}},
   \code{\link{AddLocalLevel}},
   \code{\link{AddLocalLinearTrend}},
-  \code{\link{AddGeneralizedLocalLinearTrend}},
+  \code{\link{AddSemilocalLinearTrend}},
   \code{\link[BoomSpikeSlab]{SpikeSlabPrior}},
   \code{\link[Boom]{SdPrior}}.
 }
@@ -101,6 +107,8 @@ bsts.prediction.errors(bsts.object,
 
   ## Compute out of sample prediction errors beyond times 80 and 120.
   errors <- bsts.prediction.errors(model, cutpoints = c(80, 120))
+  standardized.errors <- bsts.prediction.errors(
+      model, cutpoints = c(80, 120), standardize = TRUE)
   plot(model, "prediction.errors", cutpoints = c(80, 120))
   str(errors)     ## three matrices, with 400 ( = 500 - 100) rows
                   ## and length(y) columns

@@ -26,7 +26,7 @@ namespace BOOM {
 namespace bsts {
 
 class StateSpaceLogitModelManager
-    : public ModelManager {
+    : public ScalarModelManager {
  public:
   StateSpaceLogitModelManager();
 
@@ -42,14 +42,13 @@ class StateSpaceLogitModelManager
   //     MCMC sampler.  Can be NULL.
   //   io_manager: The io_manager that will link the MCMC draws to the
   //     R list receiving them.
-  StateSpaceLogitModel * CreateObservationModel(
+  StateSpaceLogitModel * CreateBareModel(
       SEXP r_data_list,
       SEXP r_prior,
       SEXP r_options,
       RListIoManager *io_manager) override;
 
-  HoldoutErrorSampler CreateHoldoutSampler(
-      SEXP r_bsts_object, int cutpoint, Matrix *err) override {
+  HoldoutErrorSampler CreateHoldoutSampler(SEXP, int, bool, Matrix *) override {
     return HoldoutErrorSampler(new NullErrorSampler);
   }
 

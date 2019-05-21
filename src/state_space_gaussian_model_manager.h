@@ -27,14 +27,13 @@ namespace bsts {
 
 // A base class that handles "CreateModel" for both the regression and
 // non-regression flavors of Gaussian models.
-class GaussianModelManagerBase : public ModelManager {
+class GaussianModelManagerBase : public ScalarModelManager {
  public:
   ScalarStateSpaceModelBase * CreateModel(
       SEXP r_data_list,
       SEXP r_state_specification,
       SEXP r_prior,
       SEXP r_options,
-      Vector *final_state,
       RListIoManager *io_manager) override;
 };
 
@@ -51,6 +50,7 @@ class StateSpaceModelPredictionErrorSampler
   StateSpaceModelPredictionErrorSampler(const Ptr<StateSpaceModel> &model,
                                         const Vector &holdout_data,
                                         int niter,
+                                        bool standardize,
                                         Matrix *errors);
   void sample_holdout_prediction_errors() override;
 
@@ -58,6 +58,7 @@ class StateSpaceModelPredictionErrorSampler
   Ptr<StateSpaceModel> model_;
   Vector holdout_data_;
   int niter_;
+  bool standardize_;
   Matrix *errors_;
 };
 
@@ -73,7 +74,7 @@ class StateSpaceModelManager
   //   r_prior:  An R object of class SdPrior.
   //   r_options:  Not used.
   //   io_manager:  The io_manager that will record the MCMC draws.
-  StateSpaceModel * CreateObservationModel(
+  StateSpaceModel * CreateBareModel(
       SEXP r_data_list,
       SEXP r_prior,
       SEXP r_options,
@@ -82,6 +83,7 @@ class StateSpaceModelManager
   HoldoutErrorSampler CreateHoldoutSampler(
       SEXP r_bsts_object,
       int cutpoint,
+      bool standardize,
       Matrix *prediction_error_output) override;
 
   void AddDataFromBstsObject(SEXP r_bsts_object) override;

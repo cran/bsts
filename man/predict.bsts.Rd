@@ -173,17 +173,70 @@
   \code{\link{bsts}}.
   \code{\link{AddLocalLevel}}.
   \code{\link{AddLocalLinearTrend}}.
-  \code{\link{AddGeneralizedLocalLinearTrend}}.
+  \code{\link{AddSemilocalLinearTrend}}.
 }
 
 \examples{
+
+# The number of MCMC draws in the following examples is artificially low.
+
+
+  ## Making predictions when there is no regression component.
   data(AirPassengers)
   y <- log(AirPassengers)
   ss <- AddLocalLinearTrend(list(), y)
   ss <- AddSeasonal(ss, y, nseasons = 12)
-  model <- bsts(y, state.specification = ss, niter = 500)
+  model <- bsts(y, state.specification = ss, niter = 250)
   pred <- predict(model, horizon = 12, burn = 100)
   plot(pred)
+
+  ## An example using the olddata argument.
+  full.pred <- pred
+  training <- window(y, end = c(1959, 12))
+  model <- bsts(training, state.specification = ss, niter = 250)
+  ## Predict the next 12 months.
+  pred <- predict(model, horizon = 12)
+  ## Compare the predictions to the actual data.
+  plot(pred)
+  lines(as.numeric(y, col = "red", lty = 2, lwd = 2))
+
+  ## Predict the 12 months of 1961 based on the posterior distribution
+  ## of the model fit to data through 1959, but with state filtered
+  ## through 1960.
+  updated.pred <- predict(model, horizon = 12, olddata = y)
+  par(mfrow = c(1, 2))
+  plot(full.pred, ylim = c(4, 7))
+  plot(updated.pred, ylim = c(4, 7))
+
+  ## Examples including a regression component.
+  ## 
+  data(iclaims)
+  training <- initial.claims[1:402, ]
+  holdout1 <- initial.claims[403:450, ]
+  holdout2 <- initial.claims[451:456, ]
+
+\dontrun{
+
+## This example puts the total run time over 5 seconds, which is a CRAN
+## violation.
+
+  ss <- AddLocalLinearTrend(list(), training$iclaimsNSA)
+  ss <- AddSeasonal(ss, training$iclaimsNSA, nseasons = 52)
+  ## In real life you'd want more iterations...
+  model <- bsts(iclaimsNSA ~ ., state.specification = ss, data =
+                training, niter = 100)
+
+  ## Predict the holdout set given the training set.
+  ## This is really fast, because we can use saved state from the MCMC
+  ## algorithm.
+  pred.full <- predict(model, newdata = rbind(holdout1, holdout2))
+
+  ## Predict holdout 2, given training and holdout1.
+  ## This is much slower because we need to re-filter the 'olddata' before
+  ## simulating the predictions.
+  pred.update <- predict(model, newdata = holdout2,
+    olddata = rbind(training, holdout1))
+}
 }
 \keyword{models}
 \keyword{regression}
