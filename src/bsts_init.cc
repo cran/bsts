@@ -101,8 +101,8 @@ extern "C" {
     CALLDEF(analysis_common_r_bsts_aggregate_time_series_, 3),
     CALLDEF(analysis_common_r_bsts_fit_mixed_frequency_model_, 11),
     CALLDEF(analysis_common_r_get_date_ranges_, 2),
-    // CALLDEF(analysis_common_r_fit_multivariate_bsts_model_, 8),
-    // CALLDEF(analysis_common_r_predict_multivariate_bsts_model_, 4),
+    CALLDEF(analysis_common_r_fit_multivariate_bsts_model_, 8),
+    CALLDEF(analysis_common_r_predict_multivariate_bsts_model_, 4),
     {NULL, NULL, 0}  // NOLINT
   };
 

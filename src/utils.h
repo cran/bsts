@@ -65,6 +65,8 @@ namespace BOOM {
     class ScalarStateContributionCallback
         : public MatrixIoCallback {
      public:
+      // Args:
+      //   model:  The model from which final state is to be obtained.
       explicit ScalarStateContributionCallback(ScalarStateSpaceModelBase *model)
           : model_(model),
             has_regression_(-1)
@@ -75,7 +77,6 @@ namespace BOOM {
         if (model->state_dimension() <= 0) {
           report_error("Model has no state.");
         }
-        
       }
 
       int nrow() const override {

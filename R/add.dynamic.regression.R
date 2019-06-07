@@ -34,6 +34,7 @@ DynamicRegressionRandomWalkOptions <- function(
   ## Returns:
   ##   An object that can be passed to AddDynamicRegression as the model.options argument. 
   if (!is.null(sigma.prior)) {
+    # sigma.prior must either be an SdPrior or a list of SdPrior objects.
     stopifnot(inherits(sigma.prior, "SdPrior")
       || is.list(sigma.prior) && all(sapply(sigma.prior, inherits, "SdPrior")))
   } else {

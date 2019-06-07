@@ -25,7 +25,7 @@
 namespace BOOM {
   namespace bsts {
 
-    // 
+    // A summary of the timestamps accompanying the time series.
     class TimestampInfo {
      public:
       TimestampInfo() : trivial_(true),
@@ -34,6 +34,13 @@ namespace BOOM {
       
       explicit TimestampInfo(SEXP r_data_list);
 
+      // Args:
+      //   r_data_list: A list containing an object named 'timestamp.info' which
+      //     is an R object of class TimestampInfo.
+      //
+      // Effects:
+      //   The timestamp.info object is extracted, and its contents are used to
+      //   populate this object.
       void Unpack(SEXP r_data_list);
 
       void UnpackForecastTimestamps(SEXP r_prediction_data);
@@ -149,7 +156,7 @@ namespace BOOM {
       // Returns the timestamp number (index) of observation i.  The index is
       // given in C's 0-based counting system.
       int TimestampMapping(int i) const {
-        return timestamp_info_.trivial() ? i : timestamp_info_.mapping(i) - 1;
+        return timestamp_info_.trivial() ? i : timestamp_info_.mapping(i);
       }
 
       RNG & rng() {return rng_;}
@@ -335,108 +342,108 @@ namespace BOOM {
     //=========================================================================
     // A base class for model managers handling models describing multiple time
     // series.  The number of time series is assumed known and fixed.
-    // class MultivariateModelManagerBase : public ModelManager {
-    //  public:
+    class MultivariateModelManagerBase : public ModelManager {
+     public:
 
-    //   // Create a MultivariateModelManager instance suitable for working with a
-    //   // specified model family.
-    //   //
-    //   // Args:
-    //   //   family: A string indicating the familiy of the error distribution.
-    //   //     Currently only "gaussian" is supported.
-    //   //   ydim: Dimension of the response being modeled.  The number of time
-    //   //     series.
-    //   //   xdim: The dimension (number of columns) of the predictor matrix.
-    //   //     This can be zero if there are no regressors.
-    //   static MultivariateModelManagerBase * Create(
-    //       const std::string &family, int ydim, int xdim);
+      // Create a MultivariateModelManager instance suitable for working with a
+      // specified model family.
+      //
+      // Args:
+      //   family: A string indicating the familiy of the error distribution.
+      //     Currently only "gaussian" is supported.
+      //   ydim: Dimension of the response being modeled.  The number of time
+      //     series.
+      //   xdim: The dimension (number of columns) of the predictor matrix.
+      //     This can be zero if there are no regressors.
+      static MultivariateModelManagerBase * Create(
+          const std::string &family, int ydim, int xdim);
 
-    //   // Create a MultivariateModelManager by reinstantiating a previously
-    //   // constructed bsts model.
-    //   // Args:
-    //   //   r_bsts_object:  An mbsts model object.
-    //   static MultivariateModelManagerBase * Create(SEXP r_bsts_object);
+      // Create a MultivariateModelManager by reinstantiating a previously
+      // constructed bsts model.
+      // Args:
+      //   r_bsts_object:  An mbsts model object.
+      static MultivariateModelManagerBase * Create(SEXP r_bsts_object);
 
-    //   // Creates a BOOM state space model suitable for learning with MCMC.
-    //   // Args:
-    //   //   r_data_list: An R list containing the data to be modeled in the
-    //   //     format expected by the requested model family.  This list generally
-    //   //     contains an object called 'response' and a logical vector named
-    //   //     'response.is.observed'.  If the model is a (generalized) regression
-    //   //     model then it will contain a 'predictors' object as well, otherwise
-    //   //     'predictors' will be NULL.  For logit or Poisson models an
-    //   //     additional component should be present giving the number of trials
-    //   //     or the exposure.
-    //   //   r_shared_state_specification: An R list specifying the state models
-    //   //     shared across multiple series.  
-    //   //   r_series_state_specification: A list of lists, containing the state
-    //   //     specification for the series-specific portion of state.  The outer
-    //   //     list may be NULL (R_NilValue), to indicate that no series-specic
-    //   //     state component exists.  However, if non-NULL it must have length
-    //   //     equal to the number of series being modeled.
-    //   //   r_prior: The prior distribution for the observation model.  If the
-    //   //     model is a regression model (determined by whether r_data_list
-    //   //     contains a non-NULL 'predictors' element) then this must be a list
-    //   //     of spike and slab priors.  Otherwise it must be a list of SdPriors.
-    //   //   r_options: Model or family specific options such as the technique to
-    //   //     use for model averaging (ODA vs SVSS).
-    //   //   io_manager: The io_manager responsible for writing MCMC output to an
-    //   //     R object, or streaming it from an existing object.
-    //   //
-    //   // Returns:
-    //   //  A pointer to the created model.  The pointer is owned by a Ptr
-    //   //  in the model manager, and should be caught by a Ptr in the caller.
-    //   //
-    //   // Side Effects:
-    //   //   The returned pointer is also held in a smart pointer owned by
-    //   //   the child class.
-    //   virtual MultivariateStateSpaceModelBase * CreateModel(
-    //       SEXP r_data_list,
-    //       SEXP r_shared_state_specification,
-    //       SEXP r_series_state_specification,
-    //       SEXP r_prior,
-    //       SEXP r_options,
-    //       RListIoManager *io_manager) = 0;
+      // Creates a BOOM state space model suitable for learning with MCMC.
+      // Args:
+      //   r_data_list: An R list containing the data to be modeled in the
+      //     format expected by the requested model family.  This list generally
+      //     contains an object called 'response' and a logical vector named
+      //     'response.is.observed'.  If the model is a (generalized) regression
+      //     model then it will contain a 'predictors' object as well, otherwise
+      //     'predictors' will be NULL.  For logit or Poisson models an
+      //     additional component should be present giving the number of trials
+      //     or the exposure.
+      //   r_shared_state_specification: An R list specifying the state models
+      //     shared across multiple series.  
+      //   r_series_state_specification: A list of lists, containing the state
+      //     specification for the series-specific portion of state.  The outer
+      //     list may be NULL (R_NilValue), to indicate that no series-specic
+      //     state component exists.  However, if non-NULL it must have length
+      //     equal to the number of series being modeled.
+      //   r_prior: The prior distribution for the observation model.  If the
+      //     model is a regression model (determined by whether r_data_list
+      //     contains a non-NULL 'predictors' element) then this must be a list
+      //     of spike and slab priors.  Otherwise it must be a list of SdPriors.
+      //   r_options: Model or family specific options such as the technique to
+      //     use for model averaging (ODA vs SVSS).
+      //   io_manager: The io_manager responsible for writing MCMC output to an
+      //     R object, or streaming it from an existing object.
+      //
+      // Returns:
+      //  A pointer to the created model.  The pointer is owned by a Ptr
+      //  in the model manager, and should be caught by a Ptr in the caller.
+      //
+      // Side Effects:
+      //   The returned pointer is also held in a smart pointer owned by
+      //   the child class.
+      virtual MultivariateStateSpaceModelBase * CreateModel(
+          SEXP r_data_list,
+          SEXP r_shared_state_specification,
+          SEXP r_series_state_specification,
+          SEXP r_prior,
+          SEXP r_options,
+          RListIoManager *io_manager) = 0;
 
-    //   // Returns a set of draws from the posterior predictive distribution of
-    //   // the multivariate time series.
-    //   //      
-    //   // Args:
-    //   //   r_bsts_object:  The R object created from a previous call to bsts().
-    //   //   r_prediction_data: Data needed to make the prediction.  This might be
-    //   //     a data frame for models that have a regression component, or a
-    //   //     vector of exposures or trials for binomial or Poisson data.
-    //   //   r_options: If any special options need to be passed in order to do
-    //   //     the prediction, they should be included here.
-    //   //
-    //   // Returns:
-    //   //   An array with dimension [iterations, time, ydim] containing draws
-    //   //   from the posterior predictive distribution.
-    //   virtual Array Forecast(
-    //       SEXP r_mbsts_object,
-    //       SEXP r_prediction_data,
-    //       SEXP r_burn) = 0;
+      // Returns a set of draws from the posterior predictive distribution of
+      // the multivariate time series.
+      //      
+      // Args:
+      //   r_bsts_object:  The R object created from a previous call to bsts().
+      //   r_prediction_data: Data needed to make the prediction.  This might be
+      //     a data frame for models that have a regression component, or a
+      //     vector of exposures or trials for binomial or Poisson data.
+      //   r_options: If any special options need to be passed in order to do
+      //     the prediction, they should be included here.
+      //
+      // Returns:
+      //   An array with dimension [iterations, time, ydim] containing draws
+      //   from the posterior predictive distribution.
+      virtual Array Forecast(
+          SEXP r_mbsts_object,
+          SEXP r_prediction_data,
+          SEXP r_burn) = 0;
       
-    //  private:
-    //   // Create the specific StateSpaceModel suitable for the given model
-    //   // family.  The posterior sampler for the model is set, and entries for
-    //   // its model parameters are created in io_manager.  This function does not
-    //   // add state to the the model.  It is primarily intended to aid the
-    //   // implementation of CreateModel.
-    //   //
-    //   // The arguments are documented in the comment to CreateModel.
-    //   //
-    //   // Returns:
-    //   //   A pointer to the created model.  The pointer is owned by a Ptr in the
-    //   //   the child class, so working with the raw pointer privately is
-    //   //   exception safe.
-    //   virtual MultivariateStateSpaceModelBase * CreateBareModel(
-    //       SEXP r_data_list,
-    //       SEXP r_prior,
-    //       SEXP r_options,
-    //       RListIoManager *io_manager) = 0;
+     private:
+      // Create the specific StateSpaceModel suitable for the given model
+      // family.  The posterior sampler for the model is set, and entries for
+      // its model parameters are created in io_manager.  This function does not
+      // add state to the the model.  It is primarily intended to aid the
+      // implementation of CreateModel.
+      //
+      // The arguments are documented in the comment to CreateModel.
+      //
+      // Returns:
+      //   A pointer to the created model.  The pointer is owned by a Ptr in the
+      //   the child class, so working with the raw pointer privately is
+      //   exception safe.
+      virtual MultivariateStateSpaceModelBase * CreateBareModel(
+          SEXP r_data_list,
+          SEXP r_prior,
+          SEXP r_options,
+          RListIoManager *io_manager) = 0;
       
-    // };
+    };
     
   }  // namespace bsts
 }  // namespace BOOM
