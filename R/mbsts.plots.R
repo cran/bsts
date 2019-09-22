@@ -17,6 +17,12 @@
 plot.mbsts <- function(x,
                        y = c("means", "help"),
                        ...) {
+  ## S3 method for plotting an mbsts object.
+  ## Args:
+  ##   x: The ojbect to plot.
+  ##   y: A string giving the type of plot desired.
+  ##   ...: Named arguments passed to the specific functions implementing the
+  ##     plots.  See the plot.mbsts source for a list of these functions.
   y <- match.arg(y)
   if (y == "means") {
     PlotMbstsSeriesMeans(x, ...)
@@ -185,7 +191,43 @@ plot.mbsts.prediction <- function(x,
   ## Plot the results of an mbsts prediction.
   ##
   ## Args:
-  ##   
+  ##   x: An object of class mbsts.prediction.
+  ##   y: An alias for series.id, see below.
+  ##   burn:  The number of MCMC iterations to discard as burn-in.
+  ##   plot.original: Logical or numeric.  If TRUE then the prediction is
+  ##     plotted after a time series plot of the original series.  If FALSE, the
+  ##     prediction fills the entire plot.  If numeric, then it specifies the
+  ##     number of trailing observations of the original time series to plot.
+  ##   median.color: The color to use for the posterior median of the
+  ##     prediction.
+  ##   median.type: The type of line (lty) to use for the posterior median of
+  ##     the prediction.
+  ##   median.width: The width of line (lwd) to use for the posterior median of
+  ##     the prediction.
+  ##   interval.quantiles: The lower and upper limits of the credible interval
+  ##     to be plotted.
+  ##   interval.color: The color to use for the upper and lower limits of the
+  ##     95% credible interval for the prediction.
+  ##   interval.type: The type of line (lty) to use for the upper and lower
+  ##     limits of the 95% credible inerval for of the prediction.
+  ##   interval.width: The width of line (lwd) to use for the upper and lower
+  ##     limits of the 95% credible inerval for of the prediction.
+  ##   style: What type of plot should be produced?  A dynamic distribution
+  ##     plot, or a time series boxplot.
+  ##   ylim:  Limits on the vertical axis.
+  ##   series.id: A factor, string, or integer used to indicate which of the
+  ##     multivariate series to plot.  If NULL then predictions for all series
+  ##     will be plotted.  If there are many series this can make the plot
+  ##     unreadable.
+  ##   same.scale: Logical.  If TRUE then all predictions are plotted with the
+  ##     same scale, and limits are drawn on the Y axis. If FALSE then each
+  ##     prediction is drawn to fill its plot region, and no tick marks are
+  ##     drawn on the y axis.  If ylim is specified then it is used for all
+  ##     plots, and same.scale is ignored.
+  ##   gap: The amount of space to leave between plots, measured in lines of
+  ##     text.
+  ##   ...: Extra arguments to be passed to PlotDynamicDistribution(),
+  ##     TimeSeriesBoxplot(), or lines().
   prediction <- x
   nseries <- nrow(prediction$mean)
   if (!is.null(series.id) && is.null(y)) {

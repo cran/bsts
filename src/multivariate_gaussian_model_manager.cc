@@ -108,24 +108,29 @@ namespace BOOM {
 
       if (!Rf_isNull(r_series_state_specification)) {
         // Output for the series specific state models is stored in a list named
-        // "series.specific."  Its list elements are the names of the series
-        // being modeled.  series.specific[[3]] contains all the MCMC draws of
-        // model parameters for series 3, as well as its series specific state
-        // contributions.
+        // "series.specific".  Its elements have names matching those of the
+        // series being modeled.  series.specific[[3]] contains all the MCMC
+        // draws of model parameters for series 3, as well as its series
+        // specific state contributions.
         BOOM::Factor series_id(getListElement(
             r_data_list_or_model_object, "series.id", true));
         std::vector<std::string> series_names = series_id.labels();
 
-        Ptr<SubordinateModelIoElement> subordinate_model_io(
-            new SubordinateModelIoElement("series.specific"));
-        io_manager->add_list_element(subordinate_model_io.get());
+        // Pointers to the Vector's contained in this object will be passed to
+        // series specific IO managers, so they need to remain stable.  DO NOT
+        // call push_back on series_specific_final_state_, or it can invalidate
+        // those pointers.
+        series_specific_final_state_.resize(nseries_);
         
+        NEW(SubordinateModelIoElement, subordinate_model_io)("series.specific");
+        io_manager->add_list_element(subordinate_model_io);
         for (int i = 0; i < nseries_; ++i) {
-          SEXP r_local_state_specification =
+          SEXP r_subordinate_state_specification =
               VECTOR_ELT(r_series_state_specification, i);
+
           subordinate_model_io->add_subordinate_model(series_names[i]);
-          series_specific_final_state_.push_back(Vector());
-          if (!Rf_isNull(r_local_state_specification)) {
+
+          if (!Rf_isNull(r_subordinate_state_specification)) {
             // Make the io list element aware that there is state to be stored
             // for series i.
             RListIoManager *subordinate_io_manager = 
@@ -133,16 +138,19 @@ namespace BOOM {
             StateModelFactory series_state_factory(subordinate_io_manager);
             ProxyScalarStateSpaceModel *subordinate_model =
                 model_->series_specific_model(i).get();
-            series_state_factory.AddState(subordinate_model,
-                                          r_local_state_specification);
+
+            series_state_factory.AddState(
+                subordinate_model, r_subordinate_state_specification);
+
+            series_state_factory.SaveFinalState(
+                subordinate_model,
+                &series_specific_final_state_[i]);
+
             subordinate_io_manager->add_list_element(
                 new NativeMatrixListElement(
                     new ScalarStateContributionCallback(subordinate_model),
                     "state.contributions",
                     nullptr));
-            series_state_factory.SaveFinalState(subordinate_model,
-                                                &series_specific_final_state_[i]);
-
           }
         }
       }
@@ -236,12 +244,18 @@ namespace BOOM {
     //---------------------------------------------------------------------------
     // For setting model state and parameters for debugging.
     void Manager::SetModelOptions(SEXP r_options) {
-      if (Rf_isNull(r_options)) return;
-      
-      SEXP r_fixed_state = getListElement(r_options, "fixed.state");
-      if (!Rf_isNull(r_fixed_state)) {
-        model_->permanently_set_state(ToBoomMatrix(r_fixed_state));
+      if (Rf_isNull(r_options)) {
+        return;
       }
+      
+      SEXP r_shared_state = getListElement(r_options, "fixed.shared.state");
+      if (!Rf_isNull(r_shared_state)) {
+        Matrix state = ToBoomMatrix(r_shared_state);
+        if (state.ncol() != model_->time_dimension()) {
+          state = state.transpose();
+        }
+        model_->permanently_set_state(state);
+      } 
     }
 
     //---------------------------------------------------------------------------
@@ -297,7 +311,7 @@ namespace BOOM {
         // (0) samplers for the individual regression models in the observation
         //     model.
         // (1) the observation_model_sampler and
-        // (2) the sampler for the primary model.
+        // (2) the sampler for the main state space model.
         //
         // (1) and (2) are trivial.
 
@@ -311,6 +325,9 @@ namespace BOOM {
               VECTOR_ELT(r_prior, i));
         }
 
+        //----------------------------------------------------------------------
+        // For debugging purposes the function can be called with options to fix
+        // the model parameters at specific values.
         bool fixed_coefficients = false;
         bool fixed_residual_sd = false;
         if (!Rf_isNull(r_options)) {
@@ -325,9 +342,6 @@ namespace BOOM {
            for (int i = 0; i < nseries_; ++i) {
              model_->observation_model()->model(i)->set_Beta(coefficients.row(i));
            }
-           // std::cout << "regression coefficients held fixed at "
-           //           << std::endl
-           //           << coefficients;
            fixed_coefficients = true;
           }
 
@@ -338,37 +352,15 @@ namespace BOOM {
               model_->observation_model()->model(i)->set_sigsq(
                   square(residual_sd[i]));
             }
-            // std::cout << "residual sd held fixed at " << residual_sd << std::endl;
             fixed_residual_sd = true;
           }
 
-          SEXP r_shared_state = getListElement(r_options, "fixed.shared.state");
-          if (!Rf_isNull(r_shared_state)) {
-            Matrix state = ToBoomMatrix(r_shared_state);
-            if (state.ncol() != model_->time_dimension()) {
-              state = state.transpose();
-            }
-            // if (state.ncol() != model_->time_dimension()
-            //     || state.nrow() != model_->state_dimension()) {
-            //   report_error("State is the wrong dimension.");
-            // }
-            // std::cout << "shared state held fixed.  first 5 columns are: "
-            //           << std::endl;
-
-            // for (int i = 0; i < state.nrow(); ++i) {
-            //   for (int j = 0; j < std::min<int>(5, state.ncol()); ++j) {
-            //     std::cout << state(i, j) << " ";
-            //   }
-            //   std::cout << "\n";
-            // }
-            model_->permanently_set_state(state);
-          }
-          
         }
         if (fixed_residual_sd != fixed_coefficients) {
           report_error("If you fix one set of regression parameters you "
                        "must fix both.");
         }
+        //----------------------------------------------------------------------
 
         if (!fixed_coefficients) {
           NEW(IndependentRegressionModelsPosteriorSampler,
@@ -381,6 +373,7 @@ namespace BOOM {
             model_.get());
         model_->set_method(sampler);
       }
+
     }
 
     //--------------------------------------------------------------------------

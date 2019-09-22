@@ -36,8 +36,16 @@ namespace BOOM {
 
       // Args:
       //   r_data_list: A list containing an object named 'timestamp.info' which
-      //     is an R object of class TimestampInfo.
-      //
+      //     is an R object of class TimestampInfo.  The list contains the
+      //     following named elements:
+      //     - timestamps.are.trivial: Scalar boolean.
+      //     - number.of.time.points:  Scalar integer.
+      //     - timestamp.mapping: Either R_NilValue (if timestamps are trivial)
+      //         or a numeric vector containing the index of the timestamp to
+      //         which each observation belongs.  These indices are in R's
+      //         unit-offset counting system.  The member function 'mapping'
+      //         handles the conversion to the C++ 0-offset counting system.
+      // 
       // Effects:
       //   The timestamp.info object is extracted, and its contents are used to
       //   populate this object.
@@ -54,8 +62,17 @@ namespace BOOM {
 
       // The index of the time point to which observation i belongs.  The index
       // is in C's 0-based counting system.
-      int mapping(int i) const {
-        return trivial_ ? i : timestamp_mapping_[i] - 1;
+      //
+      // Args:
+      //   observation_number: The index of an observation (row in the data)
+      //     in C's 0-offset counting system.
+      //
+      // Returns:
+      //   The index of the time point (again, in C's 0-offset counting system)
+      //   to which the specified observation belongs.
+      int mapping(int observation_number) const {
+        return trivial_ ? observation_number
+            : timestamp_mapping_[observation_number] - 1;
       }
 
       const std::vector<int> &forecast_timestamps() const {
@@ -155,8 +172,8 @@ namespace BOOM {
 
       // Returns the timestamp number (index) of observation i.  The index is
       // given in C's 0-based counting system.
-      int TimestampMapping(int i) const {
-        return timestamp_info_.trivial() ? i : timestamp_info_.mapping(i);
+      int TimestampMapping(int observation_number) const {
+        return timestamp_info_.mapping(observation_number);
       }
 
       RNG & rng() {return rng_;}
@@ -199,7 +216,7 @@ namespace BOOM {
       // Returns:
       //    The number of periods to be forecast.
       virtual int UnpackForecastData(SEXP r_prediction_data) = 0;
-      
+
       Vector &final_state() {return final_state_;}
       
      private:
@@ -313,6 +330,27 @@ namespace BOOM {
                               SEXP r_burn, SEXP r_observed_data);
 
      private:
+      // If the model contains a dynamic regression component then unpack the
+      // predictors and tack them on the end of the dynamic regression state
+      // model object.
+      //
+      // Args:
+      //   r_prediction_data: An R list containing data needed for prediction.
+      //     The signal that a dynamic regression model is present is that
+      //     r_prediction_data contains an element named
+      //     dynamic.regression.predictors.
+      //   model:  The model containing a dynamic regression state model.
+      //
+      // Effects:
+      //   dynamic.regression.predictors is extracted from r_prediction_data,
+      //   and converted to a matrix.  The matrix is appended to the dynamic
+      //   regression component of model.
+      //
+      //   This function assumes that only one dynamic regression component
+      //   exists.
+      void UnpackDynamicRegressionForecastData(
+          SEXP r_prediction_data, ScalarStateSpaceModelBase *model);
+      
       // Create the specific StateSpaceModel suitable for the given model
       // family.  The posterior sampler for the model is set, and entries for
       // its model parameters are created in io_manager.  This function does not
@@ -351,12 +389,12 @@ namespace BOOM {
       // Args:
       //   family: A string indicating the familiy of the error distribution.
       //     Currently only "gaussian" is supported.
-      //   ydim: Dimension of the response being modeled.  The number of time
+      //   nseries: Dimension of the response being modeled.  The number of time
       //     series.
       //   xdim: The dimension (number of columns) of the predictor matrix.
       //     This can be zero if there are no regressors.
       static MultivariateModelManagerBase * Create(
-          const std::string &family, int ydim, int xdim);
+          const std::string &family, int nseries, int xdim);
 
       // Create a MultivariateModelManager by reinstantiating a previously
       // constructed bsts model.
@@ -417,12 +455,11 @@ namespace BOOM {
       //     the prediction, they should be included here.
       //
       // Returns:
-      //   An array with dimension [iterations, time, ydim] containing draws
+      //   An array with dimension [iterations, time, nseries] containing draws
       //   from the posterior predictive distribution.
-      virtual Array Forecast(
-          SEXP r_mbsts_object,
-          SEXP r_prediction_data,
-          SEXP r_burn) = 0;
+      virtual Array Forecast(SEXP r_mbsts_object,
+                             SEXP r_prediction_data,
+                             SEXP r_burn) = 0;
       
      private:
       // Create the specific StateSpaceModel suitable for the given model

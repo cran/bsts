@@ -96,7 +96,7 @@ predict.bsts <- function(object,
   prediction.data <- .FormatBstsPredictionData(
     object, newdata, horizon, trials.or.exposure, na.action)
   prediction.data$timestamps <- .ExtractPredictionTimestamps(
-      object, newdata, timestamps)
+    object, newdata, timestamps)
   stopifnot(is.numeric(burn), length(burn) == 1, burn < object$niter)
   if (!is.null(olddata)) {
     olddata <- .FormatObservedDataForPredictions(object, olddata, na.action,
@@ -110,6 +110,7 @@ predict.bsts <- function(object,
   if (!is.null(seed)) {
     seed <- as.integer(seed)
   }
+
   predictive.distribution <- .Call("analysis_common_r_predict_bsts_model_",
                                    object,
                                    prediction.data,
@@ -182,7 +183,6 @@ plot.bsts.prediction <- function(x,
   ## Returns:
   ##   This function is called for its side effect, which is to
   ##   produce a plot on the current graphics device.
-
   prediction <- x
   if (burn > 0) {
     prediction$distribution <-
@@ -291,32 +291,47 @@ plot.bsts.prediction <- function(x,
   } else {
     predictors <- matrix(rep(1, horizon), ncol = 1)
   }
-
+  horizon <- as.integer(horizon)
+  
   if (object$family == "gaussian" || object$family == "student") {
     if (object$has.regression) {
-      ans <- list("predictors" = predictors)
+      ans <- list("predictors" = predictors, horizon = horizon)
     } else {
-      ans <- list("horizon" = as.integer(horizon))
+      ans <- list("horizon" = horizon)
     }
   } else if (object$family == "logit") {
     ans <- list(
       "predictors" = predictors,
+      "horizon" = horizon,
       "trials" = .FormatTrialsOrExposure(trials.or.exposure, newdata, horizon))
   } else if (object$family == "poisson") {
     ans <- list(
       "predictors" = predictors,
+      "horizon" = horizon,
       "exposure" = .FormatTrialsOrExposure(
         trials.or.exposure, newdata, horizon))
   } else {
     stop("Unrecognized object family in .FormatBstsPredictionData")
   }
-  return(.ExtractDynamicRegressionPredictors(ans, object, newdata))
+
+  ## If the model object contains any dynamic regression components, add them
+  ## here.
+  ans <- .ExtractDynamicRegressionPredictors(ans, object, newdata)
+
+  ## Handle the case where there is no static regression, but there is a dynamic
+  ## regression.
+  if (!is.null(ans$dynamic.regression.predictors)) {
+    if (is.null(ans$predictors)
+      || (nrow(ans$dynamic.regression.predictors) != nrow(ans$predictors)
+        && all(ans$predictors == 1))) {
+      ans$predictors <- matrix(rep( 1, nrow(ans$dynamic.regression.predictors)))
+    }
+  }
+  return(ans)
 }
 
 ###---------------------------------------------------------------------------
-.FormatTrialsOrExposure <- function(arg,
-                                    newdata,
-                                    horizon = nrow(newdata)) {
+.FormatTrialsOrExposure <- function(arg, newdata, horizon) {
   ## Get the number of binomial trials, or Poisson exposure times, for
   ## forecasting binomial or Poisson data.
   ##
@@ -331,11 +346,23 @@ plot.bsts.prediction <- function(x,
   ##     frame containing a column with the corresponding name, filled
   ##     with the vector of trials or exposure times to be used.  If
   ##     'arg' is numeric then 'newdata' is not used.
-  ##   horizon:  An integer giving the number of forecast periods.
+  ##   horizon: An integer giving the number of forecast periods.  This is only
+  ##     needed if newdata is NULL.
   ##
   ## Returns:
   ##   A numeric vector of length 'horizon' containing the trials or
   ##   exposure time to use in each foreacst period.
+  if (is.data.frame(newdata) || is.matrix(newdata)) {
+    horizon <- nrow(newdata)
+  } else if (is.zoo(newdata)) {
+    if (!is.null(nrow(newdata))) {
+      horizon <- nrow(newdata)
+    } else {
+      horizon <- length(newdata)
+    }
+  } else if (is.numeric(newdata)) {
+    horizon <- length(newdata)
+  }
   if (is.character(arg)) {
    arg <- newdata[, arg]
   }
@@ -480,7 +507,9 @@ plot.bsts.prediction <- function(x,
          "dynamic regression component.")
   }
   if (any(dynamic.regression)) {
-    dynamic.regression <-
+    ## dynamic.regression is now a list of dynamic regression state
+    ## specification objects.
+    dynamic.regression <- 
         seq_along(bsts.object$state.specification)[dynamic.regression]
     for (d in dynamic.regression) {
       dr.object <- bsts.object$state.specification[[d]]
@@ -489,6 +518,10 @@ plot.bsts.prediction <- function(x,
                                        xdim = ncol(dr.object$predictors),
                                        na.action)
       prediction.data$dynamic.regression.predictors <- as.matrix(predictors)
+      if (prediction.data$horizon == 1) {
+        prediction.data$horizon <-
+          nrow(prediction.data$dynamic.regression.predictors)
+      }
     }
   }
   return(prediction.data)
@@ -500,7 +533,7 @@ plot.bsts.prediction <- function(x,
     newdata,
     xdim = NULL,
     na.action) {
-  ## Create the matrix of predictors from a newdata, using an object's
+  ## Create the matrix of predictors from newdata, using an object's
   ##   * terms
   ##   * xlevels
   ##   * contrasts
@@ -533,7 +566,6 @@ plot.bsts.prediction <- function(x,
   ## Returns:
   ##   The matrix of predictors defined by newdata and the regression
   ##   model structure.
-
   if (is.null(xdim)) {
     beta <- object$coefficients
     if (is.null(beta)) {
@@ -552,6 +584,9 @@ plot.bsts.prediction <- function(x,
   if (is.null(newdata)) {
     stop("You need to supply 'newdata' when making predictions with ",
          "a bsts object that has a regression component.")
+  }
+  if (is.zoo(newdata)) {
+    newdata <- as.data.frame(newdata)
   }
   if (is.data.frame(newdata)) {
     Terms <- delete.response(terms(object))
@@ -589,7 +624,8 @@ plot.bsts.prediction <- function(x,
       predictors <- cbind(1, predictors)
     }
     if (ncol(predictors) != xdim) {
-      stop("Wrong number of columns in newdata")
+      stop(paste("Wrong number of columns in newdata. ",
+        "Consider passing a data frame?"))
     }
 
     na.rows <- rowSums(is.na(predictors)) > 0

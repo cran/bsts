@@ -32,6 +32,8 @@
 #include "r_interface/list_io.hpp"
 
 #include "Models/StateSpace/Filters/KalmanTools.hpp"
+#include "Models/StateSpace/StateModels/DynamicRegressionStateModel.hpp"
+#include "Models/StateSpace/StateModels/DynamicRegressionArStateModel.hpp"
 
 #include "cpputil/report_error.hpp"
 #include "distributions.hpp"
@@ -254,6 +256,7 @@ namespace BOOM {
         report_error("Forecast called with NULL prediction data.");
       }
       int forecast_horizon = UnpackForecastData(r_prediction_data);
+      UnpackDynamicRegressionForecastData(r_prediction_data, model);
       int max_time = model->time_dimension() + forecast_horizon;
       for (int s = 0; s < model->number_of_state_models(); ++s) {
         model->state_model(s)->observe_time_dimension(max_time);
@@ -281,11 +284,39 @@ namespace BOOM {
       return ans;
     }
 
+    void ScalarModelManager::UnpackDynamicRegressionForecastData(
+        SEXP r_prediction_data, ScalarStateSpaceModelBase *model) {
+      SEXP r_dynamic_regression_predictors = getListElement(
+          r_prediction_data, "dynamic.regression.predictors");
+      if (Rf_isNull(r_dynamic_regression_predictors)) {
+        return;
+      }
+      for (int s = 0; s < model->number_of_state_models(); ++s) {
+        DynamicRegressionStateModel *dreg =
+            dynamic_cast<DynamicRegressionStateModel *>(
+                model->state_model(s).get());
+        if (dreg) {
+          dreg->add_forecast_data(ToBoomMatrix(
+              r_dynamic_regression_predictors));
+          return;
+        }
+
+        DynamicRegressionArStateModel *dregar =
+            dynamic_cast<DynamicRegressionArStateModel *>(
+                model->state_model(s).get());
+        if (dregar) {
+          dregar->add_forecast_data(ToBoomMatrix(
+              r_dynamic_regression_predictors));
+          return;
+        }
+      }
+    }
+    
     //=========================================================================
     MultivariateModelManagerBase * MultivariateModelManagerBase::Create(
         SEXP r_mbsts_object) {
       std::string family = ToString(getListElement(r_mbsts_object, "family"));
-      int ydim = Rf_ncols(getListElement(
+      int nseries = Rf_ncols(getListElement(
           r_mbsts_object, "original.series", true));
       bool regression = !Rf_isNull(getListElement(
           r_mbsts_object, "predictors", true));
@@ -293,16 +324,16 @@ namespace BOOM {
       if (regression) {
         xdim = Rf_ncols(getListElement(r_mbsts_object, "predictors"));
       }
-      return MultivariateModelManagerBase::Create(family, ydim, xdim);
+      return MultivariateModelManagerBase::Create(family, nseries, xdim);
     }
 
     //--------------------------------------------------------------------------    
     MultivariateModelManagerBase * MultivariateModelManagerBase::Create(
-        const std::string &family, int ydim, int xdim) {
+        const std::string &family, int nseries, int xdim) {
 
       if (family == "gaussian") {
         MultivariateGaussianModelManager *manager =
-            new MultivariateGaussianModelManager(ydim, xdim);
+            new MultivariateGaussianModelManager(nseries, xdim);
         return manager;
       } else {
         report_error("For now, only Gaussian families are supported in the "
