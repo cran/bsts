@@ -96,7 +96,8 @@ AddRandomWalkHoliday <- function(state.specification = NULL,
     time0 = as.Date(.SetTimeZero(time0, y)),
     sigma.prior = .ValidateHolidaySigmaPrior(sigma.prior, sdy),
     initial.state.prior = .ValidateHolidayInitialStatePrior(
-      initial.state.prior, sdy))
+      initial.state.prior, sdy),
+    size = 1)
   class(holiday.model) <- c("RandomWalkHolidayStateModel", "HolidayStateModel",
     "StateModel")
   state.specification[[length(state.specification) + 1]] <- holiday.model
