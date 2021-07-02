@@ -1,6 +1,6 @@
 Package: bsts
-Version: 0.9.6
-Date: 2021-04-06
+Version: 0.9.7
+Date: 2021-06-21
 Title: Bayesian Structural Time Series
 Author: Steven L. Scott <steve.the.bayesian@gmail.com>
 Maintainer: Steven L. Scott <steve.the.bayesian@gmail.com>
@@ -14,6 +14,6 @@ LinkingTo: Boom (>= 0.9.7)
 License: LGPL-2.1 | file LICENSE
 Encoding: UTF-8
 NeedsCompilation: yes
-Packaged: 2021-04-07 04:18:51 UTC; steve
+Packaged: 2021-06-21 15:12:04 UTC; steve
 Repository: CRAN
-Date/Publication: 2021-04-07 09:40:08 UTC
+Date/Publication: 2021-07-02 04:30:07 UTC
