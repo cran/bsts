@@ -1,4 +1,4 @@
-77060bb31e06c8bce2996840a62ec823 *DESCRIPTION
+3e7a94e74d8420bd9659550450c174f2 *DESCRIPTION
 ccd3022578bbd36b69595f56cd8d83e5 *LICENSE
 1570eae7bf1ed9a241feeacb9404345b *NAMESPACE
 ceb07fe9db975f5c42496dfaa33a5d14 *R/add.ar.R
@@ -14,7 +14,7 @@ d4f5df46c6a15e0d4e47ede074775446 *R/add.semilocal.linear.trend.R
 f965dd362d2321286bea83acd0b40c2d *R/add.static.intercept.R
 c69a20b8a59408f1c7e47c51c180b36b *R/add.student.local.linear.trend.R
 585ef9759883b1349a00d140b91faacd *R/add.trig.R
-a98db043d454fecd68c910546bdecf64 *R/bsts.R
+5e596c7028f1b1db6ed476e3fd89bd02 *R/bsts.R
 642f82708acd5ce362948999df6aaf2d *R/compare.bsts.models.R
 994c84adfa23228d724050d98c6a560e *R/date.functions.R
 7512979ef565815e645dfc2dbab35bd8 *R/diagnostics.R
@@ -153,7 +153,7 @@ d99ce4ef93988dc2e1b7279ab92be31e *src/aggregate_time_series.cc
 776cfc2e6f5b39a8354601ceaf73905b *src/create_state_model.cpp
 f8f89c660dc8cf6920e8694d25b99671 *src/create_state_model.h
 4a0ab82799effea8a0f2998cfb9302f7 *src/dirm.cc
-f698985e6d5832df83a7ec75e44fcbce *src/dynamic_intercept_model_manager.cc
+c230f6664bd466e38e8e427d73b81cd2 *src/dynamic_intercept_model_manager.cc
 f4b47e0c03ea817b60f652813b16fb06 *src/dynamic_intercept_model_manager.h
 e6f88ebc8a3c65c29fd14268e57fe4d9 *src/get_date_ranges.cc
 cf13c9e432dda0d3468449ec04dc4804 *src/mbsts.cc
@@ -191,5 +191,6 @@ abadc45049de045297dc88b776546d08 *tests/testthat/test-poisson.R
 e91ff5f823c6acbff0b7b7d6810a82a8 *tests/testthat/test-prediction.R
 74913baa6a0f8135591ba1c6d7b7e46e *tests/testthat/test-regressionholiday.R
 ebe710afd159f82025b7c8b9d6e6d237 *tests/testthat/test-seasonal.R
+e0c7763b06a704f13b10d4248db8f344 *tests/testthat/test-sigma-upper-limit.R
 6c0c26d250eb86a7f004138b65297c90 *tests/testthat/test-student.R
 9f6f10bf2045923b08f20734cef76b22 *tests/testthat/test-trig.R
